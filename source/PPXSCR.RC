@@ -1,0 +1,13 @@
+//-----------------------------------------------------------------------------
+//	Paper Plane リソース
+//-----------------------------------------------------------------------------
+#ifdef SDKRC
+#include <windows.h>
+#endif
+// TOROWIN.H, PPCOMMON.H は PPx のソースから流用する
+#include "../../ppx/TOROWIN.H"
+#include "../../ppx/PPCOMMON.H"
+
+PPXRCDATA_CUSTOMIZE_LIST RCDATA "CUSTLIST.CFG"
+
+1 typelib "PPXSCR.tlb"

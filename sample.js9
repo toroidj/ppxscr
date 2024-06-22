@@ -1,0 +1,31 @@
+//!*script
+// JScript9.DLL を拡張子で指定する例。スクリプトそのものは JScript.DLL でも可
+
+// ディレクトリ情報
+PPx.Echo(
+	"ScriptFullName:" + PPx.ScriptFullName + "\n" +
+	"ScriptName:" + PPx.ScriptName + "\n" +
+	"WindowIDName:" + PPx.WindowIDName + "\n" +
+	"EntryIndex:" + PPx.EntryIndex + "\n" +
+	"EntryDisplayTop:" + PPx.EntryDisplayTop + "\n" +
+	"EntryDisplayX:" + PPx.EntryDisplayX + "\n" +
+	"EntryDisplayY:" + PPx.EntryDisplayY + "\n" +
+	"WindowDirection:" + PPx.WindowDirection + "\n" +
+	"Pane/Tab index: Pane=" + PPx.Pane.index + "/Tab=" + PPx.Pane.Tab.index + "\r\n" +
+	"PaneLock:" + PPx.Pane.Tab.lock
+);
+
+PPx.report("・カーソル移動による列挙サンプル");
+if ( PPx.EntryFirstMark == 0 ){
+	PPx.Echo("マークはありません");
+}else{
+	do {
+		PPx.Echo("EntryIndex:" + PPx.EntryIndex + "\n" +
+			"EntryName:" + PPx.EntryName + "\n" +
+			"EntryComment:" + PPx.EntryComment + "\n" +
+			"EntryAttributes:" + PPx.EntryAttributes + "\n" +
+			"EntrySize:" + PPx.EntrySize + "\n" +
+			"EntryMark:" + PPx.EntryMark
+		);
+	}while( PPx.EntryNextMark != 0 );
+}

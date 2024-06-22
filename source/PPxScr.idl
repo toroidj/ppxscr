@@ -1,0 +1,1001 @@
+[
+  uuid(605CC4A1-BC99-44BC-A9A7-F2C1EF6FC943), 
+  version(1.0), 
+  helpstring("PPx Script Module"), 
+  hidden, 
+  custom(DE77BA65-517C-11D1-A2DA-0000F8773CE9, "Created by MIDL version 8.01.0628 at Tue Jan 19 12:14:07 2038\n"), 
+  custom(DE77BA63-517C-11D1-A2DA-0000F8773CE9, 2147483647), 
+  custom(DE77BA64-517C-11D1-A2DA-0000F8773CE9, 134283892)
+    
+]
+library PPxScr
+{
+
+  importlib("stdole2.tlb");
+
+  [
+    uuid(A540CECD-88F0-4F99-A1FF-5F20BA36DF9F), 
+    version(1.0)
+  ]
+   dispinterface IPPxEvents
+  {
+    properties:
+    methods:
+  };
+
+  [
+    uuid(EC40005E-168A-4B64-9428-B7949136AFD8), 
+    version(1.0)
+  ]
+  coclass PPxObject
+  {
+    [default, source] dispinterface IPPxEvents;
+    [default] interface IPPx;
+  };
+
+  [
+    uuid(8E05B06A-C72E-49D4-98D1-27AACB87B5AD), 
+    version(1.0)
+  ]
+  coclass IArguments_Class
+  {
+    [default] interface IArguments;
+  };
+
+  [
+    uuid(83F5B8D1-759E-48CD-B9B5-4A981709E1B6), 
+    version(1.0), 
+    custom(B0FC9343-5F0E-11D3-A3B9-00C04F79AD3A, 0)
+  ]
+  coclass IEntry_Class
+  {
+    [default] interface IEntry;
+  };
+
+  [
+    uuid(7A7AFF4F-0122-4BB7-B083-38A58F7E5D29), 
+    version(1.0)
+  ]
+  coclass IPane_Class
+  {
+    [default] interface IPane;
+  };
+
+  [
+    uuid(015921B8-BA6B-4C64-A0F9-31E523A9F67F), 
+    version(1.0)
+  ]
+  coclass ITab_Class
+  {
+    [default] interface ITab;
+  };
+
+  [
+    uuid(4EA875C7-268F-4439-96EE-EAFA90173788), 
+    version(1.0), 
+    dual, 
+    oleautomation
+  ]
+   interface IPPxEnum: IDispatch
+  {
+    [
+    id(0x00000000), 
+    uidefault
+    ]
+    HRESULT _stdcall Item([in, optional] long index, [out, retval] VARIANT * Value );
+    [
+    id(0x00000001)
+    ]
+    HRESULT _stdcall moveFirst( void );
+    [
+    id(0x00000002)
+    ]
+    HRESULT _stdcall moveNext([out, retval] long * Value );
+    [
+    id(0x00000003)
+    ]
+    HRESULT _stdcall atEnd([out, retval] long * Value );
+    [
+    id(0x00000004)
+    ]
+    HRESULT _stdcall Reset( void );
+    [
+    propget, 
+    id(0x00000005)
+    ]
+    HRESULT _stdcall index([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000005)
+    ]
+    HRESULT _stdcall index([in] long Value );
+  };
+
+  [
+    uuid(4EA475C7-268F-4139-96EE-EAFA91173788), 
+    version(1.0)
+  ]
+  coclass IPPxEnum_Class
+  {
+    [default] interface IPPxEnum;
+  };
+
+  [
+    uuid(6114B9D8-86E7-4D41-95DD-DB7262512BA6), 
+    version(1.0), 
+    dual, 
+    oleautomation
+  ]
+   interface IPPx: IDispatch
+  {
+    [
+    id(0x00000008)
+    ]
+    HRESULT _stdcall Execute([in] BSTR param, [out, retval] long * result );
+    [
+    id(0x00000003)
+    ]
+    HRESULT _stdcall DisconnectObject([in]  IDispatch * pObject );
+    [
+    id(0x00000002)
+    ]
+    HRESULT _stdcall ConnectObject([in]  IDispatch * pObject, [in] BSTR bstrPrefix );
+    [
+    id(0x00000001)
+    ]
+    HRESULT _stdcall CreateObject([in] BSTR bstrProgId, [in, optional, defaultvalue("")] BSTR bstrPrefix, [out, retval]  IDispatch ** ppObject );
+    [
+    id(0x00000009)
+    ]
+    HRESULT _stdcall Extract([in] BSTR param, [out, retval] BSTR * result );
+    [
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Sleep([in, optional] long nMilliseconds );
+    [
+    id(0x00000005)
+    ]
+    HRESULT _stdcall GetObject([in] BSTR bstrPathName, [in, optional, defaultvalue("")] BSTR bstrProgId, [in, optional, defaultvalue("")] BSTR bstrPrefix, [out, retval]  IDispatch ** ppObject );
+    [
+    id(0x00000004), 
+    vararg
+    ]
+    HRESULT _stdcall Echo([in] SAFEARRAY(VARIANT) parr );
+    [
+    propget, 
+    id(0x00000064)
+    ]
+    HRESULT _stdcall EntryName([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x000000C8)
+    ]
+    HRESULT _stdcall ScriptFullName([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x000000C9)
+    ]
+    HRESULT _stdcall ScriptName([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x00000065)
+    ]
+    HRESULT _stdcall EntryIndex([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000066)
+    ]
+    HRESULT _stdcall EntryDisplayTop([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000067)
+    ]
+    HRESULT _stdcall EntryDisplayX([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000068)
+    ]
+    HRESULT _stdcall EntryDisplayY([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000069)
+    ]
+    HRESULT _stdcall WindowDirection([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000006A)
+    ]
+    HRESULT _stdcall EntryMark([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000065)
+    ]
+    HRESULT _stdcall EntryIndex([in] long Value );
+    [
+    propput, 
+    id(0x0000006A)
+    ]
+    HRESULT _stdcall EntryMark([in] long Value );
+    [
+    propget, 
+    id(0x0000006B)
+    ]
+    HRESULT _stdcall EntryComment([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x0000006B)
+    ]
+    HRESULT _stdcall EntryComment([in] BSTR Value );
+    [
+    propget, 
+    id(0x0000006C)
+    ]
+    HRESULT _stdcall EntryAttributes([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000006D)
+    ]
+    HRESULT _stdcall EntrySize([out, retval] double * Value );
+    [
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall EntryFirstMark([out, retval] long * result );
+    [
+    id(0x0000000C)
+    ]
+    HRESULT _stdcall EntryNextMark([out, retval] long * result );
+    [
+    id(0x0000000A)
+    ]
+    HRESULT _stdcall SetPopLineMessage([in] BSTR message );
+    [
+    propget, 
+    id(0x0000012C)
+    ]
+    HRESULT _stdcall PPxVersion([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000012D)
+    ]
+    HRESULT _stdcall CodeType([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000006F)
+    ]
+    HRESULT _stdcall EntryAllCount([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000070)
+    ]
+    HRESULT _stdcall EntryDisplayCount([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000071)
+    ]
+    HRESULT _stdcall EntryDisplayFiles([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000072)
+    ]
+    HRESULT _stdcall EntryDisplayDirectories([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000073)
+    ]
+    HRESULT _stdcall DirectoryType([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000096)
+    ]
+    HRESULT _stdcall SyncView([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000096)
+    ]
+    HRESULT _stdcall SyncView([in] long Value );
+    [
+    propget, 
+    id(0x0000012E)
+    ]
+    HRESULT _stdcall ModuleVersion([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000D)
+    ]
+    HRESULT _stdcall EntryState([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000D)
+    ]
+    HRESULT _stdcall EntryState([in] long Value );
+    [
+    propget, 
+    id(0x0000000E)
+    ]
+    HRESULT _stdcall EntryExtColor([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000E)
+    ]
+    HRESULT _stdcall EntryExtColor([in] long Value );
+    [
+    propget, 
+    id(0x0000000F)
+    ]
+    HRESULT _stdcall result([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x0000000F)
+    ]
+    HRESULT _stdcall result([in] BSTR Value );
+    [
+    propget, 
+    id(0x00000010)
+    ]
+    HRESULT _stdcall Arguments([out, retval] IArguments ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x00000006)
+    ]
+    HRESULT _stdcall Quit([in, optional] long ExitCode );
+    [
+    propget, 
+    id(0x00000011)
+    ]
+    HRESULT _stdcall EntryMarkCount([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000012)
+    ]
+    HRESULT _stdcall Entry([out, retval] IEntry ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    propget, 
+    id(0x00000013)
+    ]
+    HRESULT _stdcall SlowMode([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000013)
+    ]
+    HRESULT _stdcall SlowMode([in] long Value );
+    [
+    id(0x00000014)
+    ]
+    HRESULT _stdcall GetFileInformation([in] BSTR FileName, [in, optional] long Mode, [out, retval] BSTR * Text );
+    [
+    propget, 
+    id(0x00000015)
+    ]
+    HRESULT _stdcall DriveVolumeLabel([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x00000016)
+    ]
+    HRESULT _stdcall EntryMarkSize([out, retval] double * Value );
+    [
+    propget, 
+    id(0x00000017)
+    ]
+    HRESULT _stdcall DriveTotalSize([out, retval] double * Value );
+    [
+    propget, 
+    id(0x00000018)
+    ]
+    HRESULT _stdcall DriveFreeSize([out, retval] double * Value );
+    [
+    id(0x00000019)
+    ]
+    HRESULT _stdcall EntryInsert([in] long index, [in] BSTR EntryName );
+    [
+    propget, 
+    id(0x0000001A)
+    ]
+    HRESULT _stdcall Clipboard([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x0000001A)
+    ]
+    HRESULT _stdcall Clipboard([in] BSTR Value );
+    [
+    propget, 
+    id(0x0000001B)
+    ]
+    HRESULT _stdcall StayMode([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000001B)
+    ]
+    HRESULT _stdcall StayMode([in] long Value );
+    [
+    propget, 
+    id(0x0000001C)
+    ]
+    HRESULT _stdcall EntryHighlight([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000001C)
+    ]
+    HRESULT _stdcall EntryHighlight([in] long Value );
+    [
+    propget, 
+    id(0x0000001D)
+    ]
+    HRESULT _stdcall Pane([out, retval] IPane ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x0000001E)
+    ]
+    HRESULT _stdcall EntryPrevMark([out, retval] long * result );
+    [
+    id(0x0000001F)
+    ]
+    HRESULT _stdcall EntryLastMark([out, retval] long * result );
+    [
+    id(0x00000020)
+    ]
+    HRESULT _stdcall GetComboItemCount([in] long id, [out] long * result );
+    [
+    propget, 
+    id(0x00000021)
+    ]
+    HRESULT _stdcall ComboIDName([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x00000022)
+    ]
+    HRESULT _stdcall PointType([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000023)
+    ]
+    HRESULT _stdcall PointIndex([out, retval] long * Value );
+    [
+    id(0x00000024)
+    ]
+    HRESULT _stdcall Cursor([in] long x, [in, optional, defaultvalue(-2)] long y, [out, retval] long * result );
+    [
+    propget, 
+    id(0x00000025)
+    ]
+    HRESULT _stdcall ScriptEngineName([out, retval] BSTR * Value );
+    [
+    id(0x00000026)
+    ]
+    HRESULT _stdcall getValue([in] BSTR key, [out, retval] BSTR * result );
+    [
+    id(0x00000027)
+    ]
+    HRESULT _stdcall setValue([in] BSTR key, [in] BSTR Value );
+    [
+    propget, 
+    id(0x00000028)
+    ]
+    HRESULT _stdcall ScriptEngineVersion([out, retval] BSTR * Value );
+    [
+    id(0x00000029)
+    ]
+    HRESULT _stdcall lineMessage([in] BSTR Text );
+    [
+    propget, 
+    id(0x0000002A)
+    ]
+    HRESULT _stdcall WindowIDName([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x0000002A)
+    ]
+    HRESULT _stdcall WindowIDName([in] BSTR Value );
+    [
+    id(0x0000002B)
+    ]
+    HRESULT _stdcall Argument([in, optional, defaultvalue(0)] long itemindex, [out, retval] BSTR * Arg );
+    [
+    id(0x0000002C)
+    ]
+    HRESULT _stdcall report([in] BSTR Text );
+    [
+    id(0x0000002D)
+    ]
+    HRESULT _stdcall log([in] BSTR Text );
+    [
+    id(0x0000002E)
+    ]
+    HRESULT _stdcall getProcessValue([in] BSTR key, [out, retval] BSTR * result );
+    [
+    id(0x00000030)
+    ]
+    HRESULT _stdcall setProcessValue([in] BSTR key, [in] BSTR Value );
+    [
+    id(0x00000031)
+    ]
+    HRESULT _stdcall getIValue([in] BSTR key, [out, retval] BSTR * result );
+    [
+    id(0x00000032)
+    ]
+    HRESULT _stdcall setIValue([in] BSTR key, [in] BSTR Value );
+    [
+    id(0x00000033)
+    ]
+    HRESULT _stdcall Enumerator([in]  IDispatch * object, [out, retval]  IDispatch ** Value );
+    [
+    id(0x0000002F)
+    ]
+    HRESULT _stdcall Include([in] BSTR FileName );
+    [
+    propget, 
+    id(0x00000034)
+    ]
+    HRESULT _stdcall ReentryCount([out, retval] long * Value );
+    [
+    id(0x00000035)
+    ]
+    HRESULT _stdcall option([in] BSTR name, [in, optional] VARIANT param, [out, retval] VARIANT * Value );
+  };
+
+  [
+    uuid(29BA7411-9168-4B39-B878-B6181C782884), 
+    version(1.0), 
+    dual, 
+    oleautomation
+  ]
+   interface IArguments: IDispatch
+  {
+    [
+    id(0x00000000), 
+    uidefault
+    ]
+    HRESULT _stdcall Item([in, optional] long index, [out, retval] BSTR * out_Value );
+    [
+    propget, 
+    id(0xFFFFFFFC), 
+    restricted, 
+    hidden
+    ]
+    HRESULT _stdcall _NewEnum([out, retval]  IUnknown ** out_Enum );
+    [
+    propget, 
+    id(0x00000001)
+    ]
+    HRESULT _stdcall Count([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000006)
+    ]
+    HRESULT _stdcall length([out, retval] long * Value );
+    [
+    id(0x00000002)
+    ]
+    HRESULT _stdcall Reset( void );
+    [
+    id(0x00000003)
+    ]
+    HRESULT _stdcall moveNext([out, retval] long * Value );
+    [
+    id(0x00000004)
+    ]
+    HRESULT _stdcall atEnd([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000005)
+    ]
+    HRESULT _stdcall Current([out, retval] IArguments ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    propget, 
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Value([out, retval] BSTR * Value );
+  };
+
+  [
+    uuid(E64F28F2-F656-4F61-8CA7-2F4F97AB25FF), 
+    version(1.0), 
+    dual, 
+    oleautomation
+  ]
+   interface IEntry: IDispatch
+  {
+    [
+    id(0x00000000), 
+    uidefault
+    ]
+    HRESULT _stdcall Item([in, optional] long index, [out, retval] IEntry ** out_Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    propget, 
+    id(0xFFFFFFFC), 
+    restricted, 
+    hidden
+    ]
+    HRESULT _stdcall _NewEnum([out, retval]  IUnknown ** out_Enum );
+    [
+    propget, 
+    id(0x00000001)
+    ]
+    HRESULT _stdcall Count([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000005)
+    ]
+    HRESULT _stdcall Name([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x00000006)
+    ]
+    HRESULT _stdcall index([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000006)
+    ]
+    HRESULT _stdcall index([in] long Value );
+    [
+    propget, 
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Mark([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Mark([in] long Value );
+    [
+    propget, 
+    id(0x00000008)
+    ]
+    HRESULT _stdcall Comment([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x00000008)
+    ]
+    HRESULT _stdcall Comment([in] BSTR Value );
+    [
+    propget, 
+    id(0x00000009)
+    ]
+    HRESULT _stdcall Attributes([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000A)
+    ]
+    HRESULT _stdcall Size([out, retval] double * Value );
+    [
+    propget, 
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall State([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall State([in] long Value );
+    [
+    propget, 
+    id(0x0000000C)
+    ]
+    HRESULT _stdcall ExtColor([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000C)
+    ]
+    HRESULT _stdcall ExtColor([in] long Value );
+    [
+    propget, 
+    id(0x00000002)
+    ]
+    HRESULT _stdcall length([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000F)
+    ]
+    HRESULT _stdcall DateCreated([out, retval] DATE * Value );
+    [
+    propget, 
+    id(0x00000010)
+    ]
+    HRESULT _stdcall DateLastAccessed([out, retval] DATE * Value );
+    [
+    propget, 
+    id(0x00000011)
+    ]
+    HRESULT _stdcall DateLastModified([out, retval] DATE * Value );
+    [
+    propget, 
+    id(0x00000012)
+    ]
+    HRESULT _stdcall ShortName([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x00000003)
+    ]
+    HRESULT _stdcall Highlight([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000003)
+    ]
+    HRESULT _stdcall Highlight([in] long Value );
+    [
+    id(0x0000000D)
+    ]
+    HRESULT _stdcall NextMark([out, retval] long * result );
+    [
+    id(0x0000000E)
+    ]
+    HRESULT _stdcall PrevMark([out, retval] long * result );
+    [
+    id(0x00000004)
+    ]
+    HRESULT _stdcall Hide( void );
+    [
+    id(0x00000014)
+    ]
+    HRESULT _stdcall FirstMark([out, retval] long * result );
+    [
+    id(0x00000015)
+    ]
+    HRESULT _stdcall LastMark([out, retval] long * result );
+    [
+    id(0x00000013)
+    ]
+    HRESULT _stdcall Information([out, retval] BSTR * Value );
+    [
+    id(0x00000016)
+    ]
+    HRESULT _stdcall GetComment([in, optional] long id, [out, retval] BSTR * Value );
+    [
+    id(0x00000017)
+    ]
+    HRESULT _stdcall SetComment([in] long id, [in] BSTR Value );
+    [
+    id(0x00000018)
+    ]
+    HRESULT _stdcall Reset( void );
+    [
+    id(0x00000019)
+    ]
+    HRESULT _stdcall moveNext([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000001A)
+    ]
+    HRESULT _stdcall AllMark([out, retval] IEntry ** out_Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    propget, 
+    id(0x0000001B)
+    ]
+    HRESULT _stdcall AllEntry([out, retval] IEntry ** out_Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x0000001C)
+    ]
+    HRESULT _stdcall atEnd([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000001D)
+    ]
+    HRESULT _stdcall Current([out, retval] IEntry ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x0000001E)
+    ]
+    HRESULT _stdcall IndexFrom([in] BSTR Name, [out, retval] long * moved );
+  };
+
+  [
+    uuid(A682BC0E-0D72-4D56-8818-FE2E0E49AE85), 
+    version(1.0), 
+    dual, 
+    oleautomation
+  ]
+   interface IPane: IDispatch
+  {
+    [
+    id(0x00000000), 
+    uidefault
+    ]
+    HRESULT _stdcall Item([in, optional] long index, [out, retval] IPane ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    propget, 
+    id(0xFFFFFFFC), 
+    restricted, 
+    hidden
+    ]
+    HRESULT _stdcall _NewEnum([out, retval]  IUnknown ** out_Enum );
+    [
+    propget, 
+    id(0x00000001)
+    ]
+    HRESULT _stdcall Count([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000006)
+    ]
+    HRESULT _stdcall length([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000002)
+    ]
+    HRESULT _stdcall index([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000002)
+    ]
+    HRESULT _stdcall index([in] long Value );
+    [
+    propget, 
+    id(0x00000003)
+    ]
+    HRESULT _stdcall Name([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x00000003)
+    ]
+    HRESULT _stdcall Name([in] BSTR Value );
+    [
+    propget, 
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Tab([out, retval] ITab ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x00000004)
+    ]
+    HRESULT _stdcall Reset( void );
+    [
+    id(0x00000005)
+    ]
+    HRESULT _stdcall moveNext([out, retval] long * Value );
+    [
+    id(0x00000009)
+    ]
+    HRESULT _stdcall atEnd([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000A)
+    ]
+    HRESULT _stdcall Current([out, retval] IPane ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x00000008)
+    ]
+    HRESULT _stdcall IndexFrom([in] BSTR ppcid, [out, retval] long * moved );
+  };
+
+  [
+    uuid(A05A073E-C9E6-4742-A6F4-ECD6FD86E5F3), 
+    version(1.0), 
+    dual, 
+    oleautomation
+  ]
+   interface ITab: IDispatch
+  {
+    [
+    id(0x00000000), 
+    uidefault
+    ]
+    HRESULT _stdcall Item([in, optional] long index, [out, retval] ITab ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    propget, 
+    id(0xFFFFFFFC), 
+    restricted, 
+    hidden
+    ]
+    HRESULT _stdcall _NewEnum([out, retval]  IUnknown ** out_Enum );
+    [
+    propget, 
+    id(0x00000001)
+    ]
+    HRESULT _stdcall Count([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000006)
+    ]
+    HRESULT _stdcall length([out, retval] long * Value );
+    [
+    propget, 
+    id(0x00000004)
+    ]
+    HRESULT _stdcall Lock([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000004)
+    ]
+    HRESULT _stdcall Lock([in] long Value );
+    [
+    propget, 
+    id(0x00000005)
+    ]
+    HRESULT _stdcall idname([out, retval] BSTR * Value );
+    [
+    propget, 
+    id(0x00000002)
+    ]
+    HRESULT _stdcall index([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000002)
+    ]
+    HRESULT _stdcall index([in] long Value );
+    [
+    propget, 
+    id(0x00000003)
+    ]
+    HRESULT _stdcall Name([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x00000003)
+    ]
+    HRESULT _stdcall Name([in] BSTR Value );
+    [
+    propget, 
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Type([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000007)
+    ]
+    HRESULT _stdcall Type([in] long Value );
+    [
+    propget, 
+    id(0x00000008)
+    ]
+    HRESULT _stdcall Pane([out, retval] long * Value );
+    [
+    propput, 
+    id(0x00000008)
+    ]
+    HRESULT _stdcall Pane([in] long Value );
+    [
+    propget, 
+    id(0x00000009)
+    ]
+    HRESULT _stdcall TotalCount([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000A)
+    ]
+    HRESULT _stdcall TotalPPcCount([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall Color([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall Color([in] long Value );
+    [
+    propget, 
+    id(0x0000000C)
+    ]
+    HRESULT _stdcall BackColor([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000C)
+    ]
+    HRESULT _stdcall BackColor([in] long Value );
+    [
+    id(0x0000000E)
+    ]
+    HRESULT _stdcall Execute([in] BSTR param, [out, retval] long * result );
+    [
+    id(0x0000000F)
+    ]
+    HRESULT _stdcall Extract([in] BSTR param, [out, retval] BSTR * result );
+    [
+    id(0x00000010)
+    ]
+    HRESULT _stdcall moveNext([out, retval] long * Value );
+    [
+    id(0x00000011)
+    ]
+    HRESULT _stdcall atEnd([out, retval] long * Value );
+    [
+    id(0x00000012)
+    ]
+    HRESULT _stdcall Reset( void );
+    [
+    propget, 
+    id(0x00000013)
+    ]
+    HRESULT _stdcall Current([out, retval] ITab ** Value /*警告 : 構造体の名前を検証できませんでした : */ );
+    [
+    id(0x0000000D)
+    ]
+    HRESULT _stdcall IndexFrom([in] BSTR ppcid, [out, retval] long * moved );
+  };
+
+}; 

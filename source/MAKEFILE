@@ -1,0 +1,191 @@
+name = PPXSCR
+# nmake を用いる場合、$.→$@、$&→*に書き換え
+
+UseDebug = 0	# 1 なら debug 指定
+!ifndef UseBCC
+UseBCC = 1	# 1 なら BCC32 , 0 なら CL
+!endif
+!ifndef X64
+X64 = 0		# 1 なら x64版(常にUNICODE版)
+!else
+X64 = 1
+!endif
+!ifndef ARM
+ARM = 0		# 1 なら Arm/Arm64版(常にUNICODE版)
+!endif
+!ifndef UseUnicode
+UseUnicode = 1	# 1 なら UNICODE版
+!endif
+!ifndef VCTOOLKIT
+VCTOOLKIT = 0	# VC TOOL KIT を使うなら有効に、VS2008なら無効に
+!endif
+UseIlink = 1	# 1 なら ilink32(BCC 5.5以降) を使用
+
+!ifdef RELEASE
+CTAIL = R
+UseDebug = 0
+Copt = /DRELEASE
+!endif
+
+!if $(X64)
+UseBCC	= 0
+UseUnicode	= 1
+TAIL	= $(TAIL)64
+!else
+TAIL	=
+SSEOPT = /arch:SSE2
+!endif
+
+!if $(ARM)
+UseBCC	= 0
+UseUnicode	= 1
+TAIL	= $(TAIL)A
+!endif
+
+!if $(UseUnicode)
+  UnicodeCopt	= -DUNICODE
+!endif
+
+#=============================================================== Borland 用設定
+!if $(UseBCC)
+.autodepend
+!if $(UseDebug)
+  Copt	= -R -v -vG -DDEBUG	# 追加 C コンパイルオプション
+  DebugLopt	= -v
+  DebugLib	= CG32.LIB		# 追加ライブラリ
+!endif
+!if $(UseTASM)
+ C0D	= TINYC0D
+ C0DOBJ	= TINYC0D.OBJ
+!else
+ C0D	= $(C0DLL)
+!endif
+#-------------------------------------- コンパイラ共通指定
+cc	= @BCC32 -4 -c -C -d -H -Hc -w -O -O1 -RT- -x- -DWINVER=0x400 $(bc56opt) $(Copt) $(UnicodeCopt)
+#-------------------------------------- リンカ共通指定
+!if $(UseIlink)
+ bc56opt = -Oc -q -a4
+ linkopt = @ilink32 -c -m -P -V4.0 -Gn -q $(DebugLopt)
+!else
+ linkopt = @tlink32 -c -m -P -V4.0 $(DebugLopt)
+!endif
+  C0CON	= C0X32
+  C0GUI	= C0W32
+  C0DLL	= C0D32X
+#-------------------------------------- リンカ(GUI)
+linkexe	= $(linkopt) -Tpe -aa
+#-------------------------------------- リンカ(CONSOLE)
+linkcon	= $(linkopt) -Tpe -ap
+#-------------------------------------- リンカ(DLL)
+linkdll	= $(linkopt) -Tpd -aa
+
+#-------------------------------------- インポート
+implib  = @implib
+#-------------------------------------- リソースコンパイラ
+rc	= @Brc32 -r
+#-------------------------------------- 暗黙の指定
+.C.OBJ:
+  $(cc) -o$@ $<
+
+.CPP.OBJ:
+  $(cc) -o$@ $<
+
+.RC.RES:
+  $(rc) -fo$@ $<
+#============================================================= Microsoft 用設定
+!else # !UseBCC
+
+!if $(UseDebug)
+Copt	= /Od /Zi /GS #/analyze
+DebugLopt	= /DEBUG
+!else # UseDebug
+!ifdef RELEASE
+Copt	= /Gz /O2 /Os /Oy /DRELEASE
+!else # RELEASE
+Copt	= /Gz /O2 /Os /Oy
+!endif # RELEASE
+!endif # UseDebug
+
+!if $(X64)
+X64Copt	= /wd4244 /wd4267
+# ↑サイズ違い警告を消す(※できるだけこの指定を使わないこと)
+closeall =
+!if $(VCTOOLKIT)
+LINK64	= /MACHINE:AMD64
+LIB64	= bufferoverflowu.lib
+RC64	= /d_WIN64 /dLEGACYICON
+!else # !VCTOOLKIT
+!if !$(ARM)
+LINK64	= /MACHINE:AMD64 /LARGEADDRESSAWARE
+!else # ARM
+LINK64	= /MACHINE:ARM64 /LARGEADDRESSAWARE
+Copt	= /O2 /Os /Oy /DRELEASE
+X64Copt	= /wd4244 /wd4267
+!endif # ARM
+RC64	= /d_WIN64
+!endif # VCTOOLKIT
+!else # !$(X64)
+!if $(VCTOOLKIT)
+RC64	= /dLEGACYICON
+!endif # VCTOOLKIT
+!if $(ARM)
+LINK64	= /MACHINE:ARM /LARGEADDRESSAWARE
+!endif # ARM
+!endif # X64
+
+#-------------------------------------- コンパイラ
+cc	= @"cl" /GF /nologo /c /DWINVER=0x400 $(Copt) $(UnicodeCopt) $(WineCopt) $(X64Copt) /W3 /wd4068 /wd4996 /I .
+# 4068:不明な #pragma	4996:古い関数を使用した	/Wp64:64bit移植性チェック
+
+#-------------------------------------- リンカ共通指定
+linkopt = @"link" /NOLOGO /INCREMENTAL:NO /MAP $(DebugLopt) $(LINK64)
+C0DLL	= Kernel32.Lib AdvAPI32.Lib Ole32.Lib Imm32.Lib Gdi32.Lib\
+	  Shell32.Lib User32.Lib comctl32.lib Comdlg32.lib $(LIB64)
+C0GUI	= $(C0DLL)
+C0CON	= $(C0DLL)
+#-------------------------------------- リンカ(GUI)
+linkexe	= $(linkopt) /SUBSYSTEM:WINDOWS
+#-------------------------------------- リンカ(CONSOLE)
+linkcon	= $(linkopt) /SUBSYSTEM:CONSOLE
+#-------------------------------------- リンカ(DLL)
+linkdll	= $(linkopt) /DLL
+#-------------------------------------- リソースコンパイラ
+rc	= @%COMSPEC% /C RC /dSDKRC $(RC64) $(UnicodeCopt)
+
+#-------------------------------------- 暗黙の指定
+.C.OBJ:
+  $(cc) /Fo$@ $<
+
+.CPP.OBJ:
+  $(cc) /Fo$@ $<
+
+.RC.RES:
+  $(rc) $<
+!endif
+
+#------------------------------------------------------------------------------
+allFiles:	MAKEFILE	CODE$(TAIL)$(CTAIL).OBJ	$(name)$(TAIL).DLL
+
+$(name).RES:	$(name).RC	PPxScr.tlb
+*.CPP:	ppxscr.h PPxScr_TLB.h
+#------------------------------------------------------ code体系切換用
+CODE$(TAIL)$(CTAIL).OBJ:
+  -@del *.obj 2> nul
+  -@del *.res 2> nul
+  -@if exist %CSM% del %CSM%\*.CSM
+  @copy nul CODE$(TAIL)$(CTAIL).OBJ > nul
+
+#------------------------------------------------------------------------------
+objs	= $(name).obj IArguments.obj ITab.obj IPane.obj IEntry.obj IScriptBase.obj IScriptSite.obj
+$(name)$(TAIL).DLL:	$(objs) PPXSCR.RES
+!if $(UseBCC)
+  $(linkdll) $(C0DLL) $(objs),$<,$*,$(DebugLib) NOEH32 IMPORT32 CW32,$(name),$&
+!else
+  $(linkdll) $(C0DLL) $(objs) Oleaut32.lib /OUT:$&.DLL /DEF:$(name).def $(name).RES
+!endif
+
+IArguments.obj : IArguments.cpp IArguments.h ppxscr.h PPxScr_TLB.h IScriptSite.h IScriptBase.h
+IEntry.obj : IEntry.cpp IEntry.h ppxscr.h PPxScr_TLB.h IScriptSite.h IScriptBase.h
+IPane.obj : IPane.cpp IPane.h ppxscr.h PPxScr_TLB.h IScriptSite.h IScriptBase.h
+IScriptBase.obj : IScriptBase.cpp IScriptBase.h ppxscr.h PPxScr_TLB.h IScriptSite.h
+IScriptSite.obj : IScriptSite.cpp IScriptSite.h ppxscr.h PPxScr_TLB.h IScriptBase.h

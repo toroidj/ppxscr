@@ -1,0 +1,5 @@
+#!*script
+arg = PPx.Arguments
+PPx.Echo(arg.Count)
+for i in range(arg.Count):
+	PPx.Echo(arg(i))
