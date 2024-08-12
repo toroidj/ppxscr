@@ -85,7 +85,10 @@ public:
 	STDMETHODIMP get_AllEntry(IEntry ** Value );
 	STDMETHODIMP get_AllMark(IEntry ** Value );
 
-	int EnumMode;
+#define ENUMENTRY_WITHMARK 1 // マーク順に列挙 マーク無しの時はカーソル位置のみ
+#define ENUMENTRY_MARKONLY 2 // マーク順に列挙 マーク無しの時は列挙無し
+#define ENUMENTRY_INDEX 3 // index 順に列挙
+	int EnumMode; // 正:列挙未開始、負:列挙中
 private:
 // IUnknown
 	int m_refCount;

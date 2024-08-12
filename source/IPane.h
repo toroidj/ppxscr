@@ -28,9 +28,6 @@ public:
 	// custom
 	STDMETHODIMP get_length(long *plCount);
 // IPane
-	STDMETHODIMP get_Name(BSTR *result);
-	STDMETHODIMP set_Name(wchar_t *result);
-
 	STDMETHODIMP get_index(long *Value/*[out, retval]*/);
 	STDMETHODIMP set_index(long Value/*[in]*/);
 
@@ -46,6 +43,13 @@ public:
 	STDMETHODIMP atEnd(long * value );
 	STDMETHODIMP get_Current(IPane ** Value );
 
+	STDMETHODIMP get_GroupIndex(long* Value/*[out,retval]*/);
+	STDMETHODIMP set_GroupIndex(long Value/*[in]*/);
+	STDMETHODIMP get_GroupCount(long* Value/*[out,retval]*/);
+	STDMETHODIMP get_GroupList(BSTR* list/*[out,retval]*/);
+	STDMETHODIMP get_GroupName(BSTR* Value/*[out,retval]*/);
+	STDMETHODIMP set_GroupName(BSTR Value/*[in]*/);
+
 private:
 // IUnknown
 	int m_refCount;
@@ -54,6 +58,7 @@ private:
 	int m_PaneIndex, m_EnumIndex;
 	ITypeInfo *m_typeInfo;
 	InstanceValueStruct*m_InstanceValue;
+	long GetPaneIndex(void);
 };
 
 class CEnumPane :

@@ -429,6 +429,12 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 				pVarResult->vt = VT_BSTR;
 				FixArgType(0, VT_BSTR);
 				return option(pDispParams->rgvarg[0].bstrVal, *pVarResult, pVarResult);
+
+			case 54:
+				ArgsCheck(1);
+				pVarResult->vt = VT_I4;
+				FixArgType(0, VT_I4);
+				return LoadCount(pDispParams->rgvarg[0].lVal, &pVarResult->lVal);
 		}
 	}
 									// Get/Method(ñﬂÇËílÇ†ÇË) -----------------
@@ -1620,10 +1626,16 @@ STDMETHODIMP CScriptBase::GetFileInformation(BSTR param, long Mode, BSTR *result
 	return S_OK;
 }
 
-#pragma argsused
-STDMETHODIMP CScriptBase::option(BSTR name, VARIANT param, VARIANT *result)
+STDMETHODIMP CScriptBase::option(BSTR, VARIANT, VARIANT *result)
 {
 	result->vt = VT_NULL;
+	return S_OK;
+}
+
+STDMETHODIMP CScriptBase::LoadCount(long type, long* count)
+{
+	*count = type;
+	ppxa->Function(ppxa, PPXCMDID_DIRLOADCOUNT, count);
 	return S_OK;
 }
 
@@ -2207,63 +2219,7 @@ public:
 		return DispGetIDsOfNames(m_typeInfo, rgszNames, cNames, rgDispId);
 	}
 
-	STDMETHODIMP Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID riid, /* [in] */LCID lcid, /* [in] */WORD wFlags, /* [out][in] */DISPPARAMS *pDispParams, /* [out] */VARIANT *pVarResult, /* [out] */EXCEPINFO *pExcepInfo, /* [out] */UINT *puArgErr)
-	{
-		int arg;
-		HRESULT hr;
-
-		if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
-									// Function/Get Properties ----------------
-		if ( wFlags & (DISPATCH_PROPERTYGET | DISPATCH_METHOD) ){
-			if ( pVarResult == NULL ){
-				VARIANT dummyvt;
-
-				VariantInit(&dummyvt);
-				hr = Invoke(dispIdMember, riid, lcid, wFlags, pDispParams, &dummyvt, pExcepInfo, puArgErr);
-				VariantClear(&dummyvt);
-				return hr;
-			}
-			switch (dispIdMember){
-				case DISPID_VALUE:
-				{
-					int index;
-
-//					pVarResult->vt = VT_DISPATCH;
-					if ( pDispParams->cArgs == 0 ){
-						index = 0;
-					} else{
-						FixArgType(0, VT_I4);
-						index = pDispParams->rgvarg[0].lVal;
-					}
-					return Item(index, pVarResult);
-				}
-
-				case 1:
-					ArgsCheck(0);
-					return moveFirst();
-
-				case 2:
-					ArgsCheck(0);
-					pVarResult->vt = VT_I4;
-					return moveNext(&pVarResult->lVal);
-
-				case 3:
-					ArgsCheck(0);
-					pVarResult->vt = VT_I4;
-					return atEnd(&pVarResult->lVal);
-
-				case 4:
-					ArgsCheck(0);
-					return Reset();
-			}
-		}
-		Debug_InvokeUnknownDispIID(CLASSNAMES, dispIdMember, wFlags);
-		return DISP_E_MEMBERNOTFOUND;
-
-ArgConvError:
-		if ( puArgErr != NULL ) *puArgErr = arg;
-		return hr;
-	}
+	STDMETHODIMP Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID riid, /* [in] */LCID lcid, /* [in] */WORD wFlags, /* [out][in] */DISPPARAMS *pDispParams, /* [out] */VARIANT *pVarResult, /* [out] */EXCEPINFO *pExcepInfo, /* [out] */UINT *puArgErr);
 
 	void getItem(void)
 	{
@@ -2308,17 +2264,7 @@ ArgConvError:
 		return S_OK;
 	}
 
-//	STDMETHODIMP Item(long index, LPDISPATCH* Value)
-	STDMETHODIMP Item(long index, VARIANT* Value)
-	{
-		if ( m_Item.vt == VT_EMPTY ){
-			if ( m_last ) return E_FAIL;
-			getItem();
-			if ( m_last ) return E_FAIL;
-		}
-		VariantCopy(Value, &m_Item);
-		return S_OK;
-	}
+	STDMETHODIMP Item(long index, VARIANT* Value);
 
 // ÇªÇÃëº
 	STDMETHODIMP get_index(long *Value)
@@ -2344,6 +2290,77 @@ private:
 	int m_refCount;
 	int m_last;
 };
+
+STDMETHODIMP CPPxEnum::Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID riid, /* [in] */LCID lcid, /* [in] */WORD wFlags, /* [out][in] */DISPPARAMS *pDispParams, /* [out] */VARIANT *pVarResult, /* [out] */EXCEPINFO *pExcepInfo, /* [out] */UINT *puArgErr)
+{
+	int arg;
+	HRESULT hr;
+
+	if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
+									// Function/Get Properties ----------------
+	if ( wFlags & (DISPATCH_PROPERTYGET | DISPATCH_METHOD) ){
+		if ( pVarResult == NULL ){
+			VARIANT dummyvt;
+
+			VariantInit(&dummyvt);
+			hr = Invoke(dispIdMember, riid, lcid, wFlags, pDispParams, &dummyvt, pExcepInfo, puArgErr);
+			VariantClear(&dummyvt);
+			return hr;
+		}
+
+		switch (dispIdMember){
+			case DISPID_VALUE:
+			{
+				int index;
+
+//				pVarResult->vt = VT_DISPATCH;
+				if ( pDispParams->cArgs == 0 ){
+					index = 0;
+				} else{
+					FixArgType(0, VT_I4);
+					index = pDispParams->rgvarg[0].lVal;
+				}
+				return Item(index, pVarResult);
+			}
+
+			case 1:
+				ArgsCheck(0);
+				return moveFirst();
+
+			case 2:
+				ArgsCheck(0);
+				pVarResult->vt = VT_I4;
+				return moveNext(&pVarResult->lVal);
+
+			case 3:
+				ArgsCheck(0);
+				pVarResult->vt = VT_I4;
+				return atEnd(&pVarResult->lVal);
+
+			case 4:
+				ArgsCheck(0);
+				return Reset();
+		}
+	}
+	Debug_InvokeUnknownDispIID(CLASSNAMES, dispIdMember, wFlags);
+	return DISP_E_MEMBERNOTFOUND;
+
+ArgConvError:
+	if ( puArgErr != NULL ) *puArgErr = arg;
+	return hr;
+}
+
+// åªç› index Ç…ÇÊÇÈéwíËÇÕñ¢é¿ëï
+STDMETHODIMP CPPxEnum::Item(long /*index*/, VARIANT* Value)
+{
+	if ( m_Item.vt == VT_EMPTY ){
+		if ( m_last ) return E_FAIL;
+		getItem();
+		if ( m_last ) return E_FAIL;
+	}
+	VariantCopy(Value, &m_Item);
+	return S_OK;
+}
 
 STDMETHODIMP CScriptBase::Enumerator(LPDISPATCH object, LPDISPATCH *Value)
 {

@@ -10,7 +10,7 @@
 // ************************************************************************ //
 
 // C++ TLBWRTR : $Revision:   1.151.1.0.1.27  $
-// このファイルは以下のタイプライブラリから 2024/06/21 22:42:17 に生成されました。
+// このファイルは以下のタイプライブラリから 2024/08/10 22:36:30 に生成されました。
 
 // ************************************************************************  //
 // Type Lib: C:\Source\module\ppxscr\PPxScr.tlb (1)
@@ -250,6 +250,7 @@ public:
   virtual HRESULT STDMETHODCALLTYPE get_ReentryCount(long* Value/*[out,retval]*/) = 0; // [52]
   virtual HRESULT STDMETHODCALLTYPE option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/, 
                                            VARIANT* Value/*[out,retval]*/) = 0; // [53]
+  virtual HRESULT STDMETHODCALLTYPE LoadCount(long type/*[in]*/, long* count/*[out]*/) = 0; // [54]
 
 #if !defined(__TLB_NO_INTERFACE_WRAPPERS)
 
@@ -849,7 +850,7 @@ public:
   virtual HRESULT STDMETHODCALLTYPE get_AllEntry(Ppxscr_tlb::IEntry** out_Value/*[out,retval]*/) = 0; // [27]
   virtual HRESULT STDMETHODCALLTYPE atEnd(long* Value/*[out,retval]*/) = 0; // [28]
   virtual HRESULT STDMETHODCALLTYPE get_Current(Ppxscr_tlb::IEntry** Value/*[out,retval]*/) = 0; // [29]
-  virtual HRESULT STDMETHODCALLTYPE IndexFrom(BSTR Name/*[in]*/, long* moved/*[out,retval]*/) = 0; // [30]
+  virtual HRESULT STDMETHODCALLTYPE IndexFrom(BSTR name/*[in]*/, long* moved/*[out,retval]*/) = 0; // [30]
 
 #if !defined(__TLB_NO_INTERFACE_WRAPPERS)
 
@@ -1049,10 +1050,10 @@ public:
     return Value;
   }
 
-  long __fastcall IndexFrom(BSTR Name/*[in]*/)
+  long __fastcall IndexFrom(BSTR name/*[in]*/)
   {
     long moved;
-    OLECHECK(this->IndexFrom(Name, (long*)&moved));
+    OLECHECK(this->IndexFrom(name, (long*)&moved));
     return moved;
   }
 
@@ -1096,14 +1097,18 @@ public:
   virtual HRESULT STDMETHODCALLTYPE get_length(long* Value/*[out,retval]*/) = 0; // [6]
   virtual HRESULT STDMETHODCALLTYPE get_index(long* Value/*[out,retval]*/) = 0; // [2]
   virtual HRESULT STDMETHODCALLTYPE set_index(long Value/*[in]*/) = 0; // [2]
-  virtual HRESULT STDMETHODCALLTYPE get_Name(BSTR* Value/*[out,retval]*/) = 0; // [3]
-  virtual HRESULT STDMETHODCALLTYPE set_Name(BSTR Value/*[in]*/) = 0; // [3]
   virtual HRESULT STDMETHODCALLTYPE get_Tab(Ppxscr_tlb::ITab** Value/*[out,retval]*/) = 0; // [7]
   virtual HRESULT STDMETHODCALLTYPE Reset(void) = 0; // [4]
   virtual HRESULT STDMETHODCALLTYPE moveNext(long* Value/*[out,retval]*/) = 0; // [5]
   virtual HRESULT STDMETHODCALLTYPE atEnd(long* Value/*[out,retval]*/) = 0; // [9]
   virtual HRESULT STDMETHODCALLTYPE get_Current(Ppxscr_tlb::IPane** Value/*[out,retval]*/) = 0; // [10]
   virtual HRESULT STDMETHODCALLTYPE IndexFrom(BSTR ppcid/*[in]*/, long* moved/*[out,retval]*/) = 0; // [8]
+  virtual HRESULT STDMETHODCALLTYPE get_GroupIndex(long* Value/*[out,retval]*/) = 0; // [11]
+  virtual HRESULT STDMETHODCALLTYPE set_GroupIndex(long Value/*[in]*/) = 0; // [11]
+  virtual HRESULT STDMETHODCALLTYPE get_GroupCount(long* Value/*[out,retval]*/) = 0; // [12]
+  virtual HRESULT STDMETHODCALLTYPE get_GroupName(BSTR* Value/*[out,retval]*/) = 0; // [14]
+  virtual HRESULT STDMETHODCALLTYPE set_GroupName(BSTR Value/*[in]*/) = 0; // [14]
+  virtual HRESULT STDMETHODCALLTYPE get_GroupList(BSTR* Value/*[out,retval]*/) = 0; // [13]
 
 #if !defined(__TLB_NO_INTERFACE_WRAPPERS)
 
@@ -1142,13 +1147,6 @@ public:
     return Value;
   }
 
-  BSTR __fastcall get_Name(void)
-  {
-    BSTR Value = 0;
-    OLECHECK(this->get_Name((BSTR*)&Value));
-    return Value;
-  }
-
   Ppxscr_tlb::ITab* __fastcall get_Tab(void)
   {
     Ppxscr_tlb::ITab* Value;
@@ -1184,14 +1182,45 @@ public:
     return moved;
   }
 
+  long __fastcall get_GroupIndex(void)
+  {
+    long Value;
+    OLECHECK(this->get_GroupIndex((long*)&Value));
+    return Value;
+  }
+
+  long __fastcall get_GroupCount(void)
+  {
+    long Value;
+    OLECHECK(this->get_GroupCount((long*)&Value));
+    return Value;
+  }
+
+  BSTR __fastcall get_GroupName(void)
+  {
+    BSTR Value = 0;
+    OLECHECK(this->get_GroupName((BSTR*)&Value));
+    return Value;
+  }
+
+  BSTR __fastcall get_GroupList(void)
+  {
+    BSTR Value = 0;
+    OLECHECK(this->get_GroupList((BSTR*)&Value));
+    return Value;
+  }
+
 
   __property   LPUNKNOWN       _NewEnum = {read = get__NewEnum};
   __property   long            Count = {read = get_Count};
   __property   long            length = {read = get_length};
   __property   long            index = {read = get_index, write = set_index};
-  __property   BSTR            Name = {read = get_Name};
   __property   Ppxscr_tlb::ITab* Tab = {read = get_Tab};
   __property   Ppxscr_tlb::IPane* Current = {read = get_Current};
+  __property   long            GroupIndex = {read = get_GroupIndex, write = set_GroupIndex};
+  __property   long            GroupCount = {read = get_GroupCount};
+  __property   BSTR            GroupName = {read = get_GroupName};
+  __property   BSTR            GroupList = {read = get_GroupList};
 
 #endif //   __TLB_NO_INTERFACE_WRAPPERS
 
@@ -1637,6 +1666,7 @@ public:
   HRESULT         __fastcall option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/, 
                                     VARIANT* Value/*[out,retval]*/);
   VARIANT         __fastcall option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/= TNoParam());
+  HRESULT         __fastcall LoadCount(long type/*[in]*/, long* count/*[out]*/);
 
   __property   BSTR            EntryName = {read = get_EntryName};
   __property   BSTR            ScriptFullName = {read = get_ScriptFullName};
@@ -1879,6 +1909,7 @@ public:
   HRESULT         __fastcall option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/, 
                                     VARIANT* Value/*[out,retval]*/);
   VARIANT         __fastcall option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/= TNoParam());
+  HRESULT         __fastcall LoadCount(long type/*[in]*/, long* count/*[out]*/);
 
   __property   BSTR            EntryName = {read = get_EntryName};
   __property   BSTR            ScriptFullName = {read = get_ScriptFullName};
@@ -2117,8 +2148,8 @@ public:
   HRESULT         __fastcall get_Current(Ppxscr_tlb::IEntry** Value/*[out,retval]*/);
   HRESULT         __fastcall get_Current(Ppxscr_tlb::IEntryPtr* Value/*[out,retval]*/);
   Ppxscr_tlb::IEntryPtr __fastcall get_Current(void);
-  HRESULT         __fastcall IndexFrom(BSTR Name/*[in]*/, long* moved/*[out,retval]*/);
-  long            __fastcall IndexFrom(BSTR Name/*[in]*/);
+  HRESULT         __fastcall IndexFrom(BSTR name/*[in]*/, long* moved/*[out,retval]*/);
+  long            __fastcall IndexFrom(BSTR name/*[in]*/);
 
   __property   LPUNKNOWN       _NewEnum = {read = get__NewEnum};
   __property   long            Count = {read = get_Count};
@@ -2251,8 +2282,8 @@ public:
   long            __fastcall atEnd(void);
   HRESULT         __fastcall get_Current(Ppxscr_tlb::IEntry** Value/*[out,retval]*/);
   Ppxscr_tlb::IEntry* __fastcall get_Current(void);
-  HRESULT         __fastcall IndexFrom(BSTR Name/*[in]*/, long* moved/*[out,retval]*/);
-  long            __fastcall IndexFrom(BSTR Name/*[in]*/);
+  HRESULT         __fastcall IndexFrom(BSTR name/*[in]*/, long* moved/*[out,retval]*/);
+  long            __fastcall IndexFrom(BSTR name/*[in]*/);
 
   __property   LPUNKNOWN       _NewEnum = {read = get__NewEnum};
   __property   long            Count = {read = get_Count};
@@ -2300,9 +2331,6 @@ public:
   HRESULT         __fastcall get_index(long* Value/*[out,retval]*/);
   long            __fastcall get_index(void);
   HRESULT         __fastcall set_index(long Value/*[in]*/);
-  HRESULT         __fastcall get_Name(BSTR* Value/*[out,retval]*/);
-  BSTR            __fastcall get_Name(void);
-  HRESULT         __fastcall set_Name(BSTR Value/*[in]*/);
   HRESULT         __fastcall get_Tab(Ppxscr_tlb::ITab** Value/*[out,retval]*/);
   HRESULT         __fastcall get_Tab(Ppxscr_tlb::ITabPtr* Value/*[out,retval]*/);
   Ppxscr_tlb::ITabPtr __fastcall get_Tab(void);
@@ -2316,14 +2344,27 @@ public:
   Ppxscr_tlb::IPanePtr __fastcall get_Current(void);
   HRESULT         __fastcall IndexFrom(BSTR ppcid/*[in]*/, long* moved/*[out,retval]*/);
   long            __fastcall IndexFrom(BSTR ppcid/*[in]*/);
+  HRESULT         __fastcall get_GroupIndex(long* Value/*[out,retval]*/);
+  long            __fastcall get_GroupIndex(void);
+  HRESULT         __fastcall set_GroupIndex(long Value/*[in]*/);
+  HRESULT         __fastcall get_GroupCount(long* Value/*[out,retval]*/);
+  long            __fastcall get_GroupCount(void);
+  HRESULT         __fastcall get_GroupName(BSTR* Value/*[out,retval]*/);
+  BSTR            __fastcall get_GroupName(void);
+  HRESULT         __fastcall set_GroupName(BSTR Value/*[in]*/);
+  HRESULT         __fastcall get_GroupList(BSTR* Value/*[out,retval]*/);
+  BSTR            __fastcall get_GroupList(void);
 
   __property   LPUNKNOWN       _NewEnum = {read = get__NewEnum};
   __property   long            Count = {read = get_Count};
   __property   long            length = {read = get_length};
   __property   long            index = {read = get_index, write = set_index};
-  __property   BSTR            Name = {read = get_Name};
   __property   Ppxscr_tlb::ITabPtr Tab = {read = get_Tab};
   __property   Ppxscr_tlb::IPanePtr Current = {read = get_Current};
+  __property   long            GroupIndex = {read = get_GroupIndex, write = set_GroupIndex};
+  __property   long            GroupCount = {read = get_GroupCount};
+  __property   BSTR            GroupName = {read = get_GroupName};
+  __property   BSTR            GroupList = {read = get_GroupList};
 };
 typedef TCOMIPaneT<IPane> TCOMIPane;
 
@@ -2381,9 +2422,6 @@ public:
   HRESULT         __fastcall get_index(long* Value/*[out,retval]*/);
   long            __fastcall get_index(void);
   HRESULT         __fastcall set_index(long Value/*[in]*/);
-  HRESULT         __fastcall get_Name(BSTR* Value/*[out,retval]*/);
-  BSTR            __fastcall get_Name(void);
-  HRESULT         __fastcall set_Name(BSTR Value/*[in]*/);
   HRESULT         __fastcall get_Tab(Ppxscr_tlb::ITab** Value/*[out,retval]*/);
   Ppxscr_tlb::ITab* __fastcall get_Tab(void);
   HRESULT         __fastcall Reset();
@@ -2395,14 +2433,27 @@ public:
   Ppxscr_tlb::IPane* __fastcall get_Current(void);
   HRESULT         __fastcall IndexFrom(BSTR ppcid/*[in]*/, long* moved/*[out,retval]*/);
   long            __fastcall IndexFrom(BSTR ppcid/*[in]*/);
+  HRESULT         __fastcall get_GroupIndex(long* Value/*[out,retval]*/);
+  long            __fastcall get_GroupIndex(void);
+  HRESULT         __fastcall set_GroupIndex(long Value/*[in]*/);
+  HRESULT         __fastcall get_GroupCount(long* Value/*[out,retval]*/);
+  long            __fastcall get_GroupCount(void);
+  HRESULT         __fastcall get_GroupName(BSTR* Value/*[out,retval]*/);
+  BSTR            __fastcall get_GroupName(void);
+  HRESULT         __fastcall set_GroupName(BSTR Value/*[in]*/);
+  HRESULT         __fastcall get_GroupList(BSTR* Value/*[out,retval]*/);
+  BSTR            __fastcall get_GroupList(void);
 
   __property   LPUNKNOWN       _NewEnum = {read = get__NewEnum};
   __property   long            Count = {read = get_Count};
   __property   long            length = {read = get_length};
   __property   long            index = {read = get_index, write = set_index};
-  __property   BSTR            Name = {read = get_Name};
   __property   Ppxscr_tlb::ITab* Tab = {read = get_Tab};
   __property   Ppxscr_tlb::IPane* Current = {read = get_Current};
+  __property   long            GroupIndex = {read = get_GroupIndex, write = set_GroupIndex};
+  __property   long            GroupCount = {read = get_GroupCount};
+  __property   BSTR            GroupName = {read = get_GroupName};
+  __property   BSTR            GroupList = {read = get_GroupList};
 };
 typedef IPaneDispT<IPane> IPaneDisp;
 
@@ -3702,6 +3753,12 @@ TCOMIPPxT<T>::option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/)
   return Value;
 }
 
+template <class T> HRESULT __fastcall
+TCOMIPPxT<T>::LoadCount(long type/*[in]*/, long* count/*[out]*/)
+{
+  return (*this)->LoadCount(type, count);
+}
+
 // *********************************************************************//
 // DispIntf:  IPPx
 // Flags:     (4416) Dual OleAutomation Dispatchable
@@ -4922,6 +4979,16 @@ IPPxDispT<T>::option(BSTR name/*[in]*/, VARIANT param/*[in,opt]*/)
   return Value;
 }
 
+template <class T> HRESULT __fastcall
+IPPxDispT<T>::LoadCount(long type/*[in]*/, long* count/*[out]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("LoadCount"), DISPID(54));
+  TAutoArgs<2> _args;
+  _args[1] = type /*[VT_I4:0]*/;
+  _args[2] = count /*[VT_I4:1]*/;
+  return OleFunction(_dispid, _args);
+}
+
 // *********************************************************************//
 // SmartIntf: TCOMIArguments
 // Interface: IArguments
@@ -5660,13 +5727,13 @@ TCOMIEntryT<T>::get_Current(void)
 }
 
 template <class T> HRESULT __fastcall
-TCOMIEntryT<T>::IndexFrom(BSTR Name/*[in]*/, long* moved/*[out,retval]*/)
+TCOMIEntryT<T>::IndexFrom(BSTR name/*[in]*/, long* moved/*[out,retval]*/)
 {
-  return (*this)->IndexFrom(Name, moved);
+  return (*this)->IndexFrom(name, moved);
 }
 
 template <class T> long __fastcall
-TCOMIEntryT<T>::IndexFrom(BSTR Name/*[in]*/)
+TCOMIEntryT<T>::IndexFrom(BSTR name/*[in]*/)
 {
   long moved;
   OLECHECK(this->IndexFrom(, (long*)&moved));
@@ -6207,19 +6274,19 @@ IEntryDispT<T>::get_Current(void)
 }
 
 template <class T> HRESULT __fastcall
-IEntryDispT<T>::IndexFrom(BSTR Name/*[in]*/, long* moved/*[out,retval]*/)
+IEntryDispT<T>::IndexFrom(BSTR name/*[in]*/, long* moved/*[out,retval]*/)
 {
   _TDispID _dispid(*this, OLETEXT("IndexFrom"), DISPID(30));
   TAutoArgs<1> _args;
-  _args[1] = Name /*[VT_BSTR:0]*/;
+  _args[1] = name /*[VT_BSTR:0]*/;
   return OutRetValSetterPtr(moved /*[VT_I4:1]*/, _args, OleFunction(_dispid, _args));
 }
 
 template <class T> long __fastcall
-IEntryDispT<T>::IndexFrom(BSTR Name/*[in]*/)
+IEntryDispT<T>::IndexFrom(BSTR name/*[in]*/)
 {
   long moved;
-  this->IndexFrom(Name, (long*)&moved);
+  this->IndexFrom(name, (long*)&moved);
   return moved;
 }
 
@@ -6301,26 +6368,6 @@ template <class T> HRESULT __fastcall
 TCOMIPaneT<T>::set_index(long Value/*[in]*/)
 {
   return (*this)->set_index(Value);
-}
-
-template <class T> HRESULT __fastcall
-TCOMIPaneT<T>::get_Name(BSTR* Value/*[out,retval]*/)
-{
-  return (*this)->get_Name(Value);
-}
-
-template <class T> BSTR __fastcall
-TCOMIPaneT<T>::get_Name(void)
-{
-  BSTR Value = 0;
-  OLECHECK(this->get_Name((BSTR*)&Value));
-  return Value;
-}
-
-template <class T> HRESULT __fastcall
-TCOMIPaneT<T>::set_Name(BSTR Value/*[in]*/)
-{
-  return (*this)->set_Name(Value);
 }
 
 template <class T> HRESULT __fastcall
@@ -6409,6 +6456,74 @@ TCOMIPaneT<T>::IndexFrom(BSTR ppcid/*[in]*/)
   long moved;
   OLECHECK(this->IndexFrom(, (long*)&moved));
   return moved;
+}
+
+template <class T> HRESULT __fastcall
+TCOMIPaneT<T>::get_GroupIndex(long* Value/*[out,retval]*/)
+{
+  return (*this)->get_GroupIndex(Value);
+}
+
+template <class T> long __fastcall
+TCOMIPaneT<T>::get_GroupIndex(void)
+{
+  long Value;
+  OLECHECK(this->get_GroupIndex((long*)&Value));
+  return Value;
+}
+
+template <class T> HRESULT __fastcall
+TCOMIPaneT<T>::set_GroupIndex(long Value/*[in]*/)
+{
+  return (*this)->set_GroupIndex(Value);
+}
+
+template <class T> HRESULT __fastcall
+TCOMIPaneT<T>::get_GroupCount(long* Value/*[out,retval]*/)
+{
+  return (*this)->get_GroupCount(Value);
+}
+
+template <class T> long __fastcall
+TCOMIPaneT<T>::get_GroupCount(void)
+{
+  long Value;
+  OLECHECK(this->get_GroupCount((long*)&Value));
+  return Value;
+}
+
+template <class T> HRESULT __fastcall
+TCOMIPaneT<T>::get_GroupName(BSTR* Value/*[out,retval]*/)
+{
+  return (*this)->get_GroupName(Value);
+}
+
+template <class T> BSTR __fastcall
+TCOMIPaneT<T>::get_GroupName(void)
+{
+  BSTR Value = 0;
+  OLECHECK(this->get_GroupName((BSTR*)&Value));
+  return Value;
+}
+
+template <class T> HRESULT __fastcall
+TCOMIPaneT<T>::set_GroupName(BSTR Value/*[in]*/)
+{
+  return (*this)->set_GroupName(Value);
+}
+
+template <class T> HRESULT __fastcall
+TCOMIPaneT<T>::get_GroupList(BSTR* Value/*[out,retval]*/)
+{
+  return (*this)->get_GroupList(Value);
+}
+
+template <class T> BSTR __fastcall
+TCOMIPaneT<T>::get_GroupList(void)
+{
+  BSTR Value = 0;
+  OLECHECK(this->get_GroupList((BSTR*)&Value));
+  return Value;
 }
 
 // *********************************************************************//
@@ -6507,31 +6622,6 @@ IPaneDispT<T>::set_index(long Value/*[in]*/)
 }
 
 template <class T> HRESULT __fastcall
-IPaneDispT<T>::get_Name(BSTR* Value/*[out,retval]*/)
-{
-  _TDispID _dispid(*this, OLETEXT("Name"), DISPID(3));
-  TAutoArgs<0> _args;
-  return OutRetValSetterPtr(Value /*[VT_BSTR:1]*/, _args, OlePropertyGet(_dispid, _args));
-}
-
-template <class T> BSTR __fastcall
-IPaneDispT<T>::get_Name(void)
-{
-  BSTR Value;
-  this->get_Name((BSTR*)&Value);
-  return Value;
-}
-
-template <class T> HRESULT __fastcall
-IPaneDispT<T>::set_Name(BSTR Value/*[in]*/)
-{
-  _TDispID _dispid(*this, OLETEXT("Name"), DISPID(3));
-  TAutoArgs<1> _args;
-  _args[1] = Value /*[VT_BSTR:0]*/;
-  return OlePropertyPut(_dispid, _args);
-}
-
-template <class T> HRESULT __fastcall
 IPaneDispT<T>::get_Tab(Ppxscr_tlb::ITab** Value/*[out,retval]*/)
 {
   _TDispID _dispid(*this, OLETEXT("Tab"), DISPID(7));
@@ -6617,6 +6707,88 @@ IPaneDispT<T>::IndexFrom(BSTR ppcid/*[in]*/)
   long moved;
   this->IndexFrom(ppcid, (long*)&moved);
   return moved;
+}
+
+template <class T> HRESULT __fastcall
+IPaneDispT<T>::get_GroupIndex(long* Value/*[out,retval]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("GroupIndex"), DISPID(11));
+  TAutoArgs<0> _args;
+  return OutRetValSetterPtr(Value /*[VT_I4:1]*/, _args, OlePropertyGet(_dispid, _args));
+}
+
+template <class T> long __fastcall
+IPaneDispT<T>::get_GroupIndex(void)
+{
+  long Value;
+  this->get_GroupIndex((long*)&Value);
+  return Value;
+}
+
+template <class T> HRESULT __fastcall
+IPaneDispT<T>::set_GroupIndex(long Value/*[in]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("GroupIndex"), DISPID(11));
+  TAutoArgs<1> _args;
+  _args[1] = Value /*[VT_I4:0]*/;
+  return OlePropertyPut(_dispid, _args);
+}
+
+template <class T> HRESULT __fastcall
+IPaneDispT<T>::get_GroupCount(long* Value/*[out,retval]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("GroupCount"), DISPID(12));
+  TAutoArgs<0> _args;
+  return OutRetValSetterPtr(Value /*[VT_I4:1]*/, _args, OlePropertyGet(_dispid, _args));
+}
+
+template <class T> long __fastcall
+IPaneDispT<T>::get_GroupCount(void)
+{
+  long Value;
+  this->get_GroupCount((long*)&Value);
+  return Value;
+}
+
+template <class T> HRESULT __fastcall
+IPaneDispT<T>::get_GroupName(BSTR* Value/*[out,retval]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("GroupName"), DISPID(14));
+  TAutoArgs<0> _args;
+  return OutRetValSetterPtr(Value /*[VT_BSTR:1]*/, _args, OlePropertyGet(_dispid, _args));
+}
+
+template <class T> BSTR __fastcall
+IPaneDispT<T>::get_GroupName(void)
+{
+  BSTR Value;
+  this->get_GroupName((BSTR*)&Value);
+  return Value;
+}
+
+template <class T> HRESULT __fastcall
+IPaneDispT<T>::set_GroupName(BSTR Value/*[in]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("GroupName"), DISPID(14));
+  TAutoArgs<1> _args;
+  _args[1] = Value /*[VT_BSTR:0]*/;
+  return OlePropertyPut(_dispid, _args);
+}
+
+template <class T> HRESULT __fastcall
+IPaneDispT<T>::get_GroupList(BSTR* Value/*[out,retval]*/)
+{
+  _TDispID _dispid(*this, OLETEXT("GroupList"), DISPID(13));
+  TAutoArgs<0> _args;
+  return OutRetValSetterPtr(Value /*[VT_BSTR:1]*/, _args, OlePropertyGet(_dispid, _args));
+}
+
+template <class T> BSTR __fastcall
+IPaneDispT<T>::get_GroupList(void)
+{
+  BSTR Value;
+  this->get_GroupList((BSTR*)&Value);
+  return Value;
 }
 
 // *********************************************************************//

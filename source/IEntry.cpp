@@ -17,7 +17,7 @@ CEntry::CEntry(InstanceValueStruct *InstanceValue)
 	m_typeInfo = NULL;
 	m_InstanceValue = InstanceValue;
 	m_ppxa = &(InstanceValue->ppxa);
-	EnumMode = -1;
+	EnumMode = ENUMENTRY_WITHMARK;
 	m_index = 0;
 
 	if ( FAILED(::LoadTypeInfo(&m_typeInfo, CLSID_IEntry_Class, 0)) ){
@@ -647,22 +647,24 @@ STDMETHODIMP CEntry::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched)
 		return E_INVALIDARG;
 	}
 	if ( m_index == -2 ){ // ç≈èâÇ©ÇÁ
-		if ( EnumMode == 2 ){
+		if ( EnumMode == -ENUMENTRY_INDEX ){
 			m_next_index = 0;
-		}else{
+		}else{ // -ENUMENTRY_WITHMARK / -ENUMENTRY_MARKONLY
 			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST_HS, &m_next_index) == 0 ){
 				if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST, &m_next_index) == 0 ){
 					return S_FALSE;
 				}
 			}
 			if ( m_next_index == -1 ){
-				if ( EnumMode == 1 ) return S_FALSE;
+				if ( EnumMode == -ENUMENTRY_MARKONLY ) return S_FALSE;
 				ResetIndex();
 				m_next_index = m_index;
 			}
 		}
 	}
-	if ( EnumMode == 2 ) (*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &maxindex);
+	if ( EnumMode == -ENUMENTRY_INDEX ){
+		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &maxindex);
+	}
 
 	while ( celt-- ){
 		if ( m_index == -1 ) return S_FALSE;
@@ -680,10 +682,10 @@ STDMETHODIMP CEntry::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched)
 				if ( CeltFetched != NULL ) (*CeltFetched)++;
 			}
 		}
-		if ( EnumMode == 2 ){
+		if ( EnumMode == -ENUMENTRY_INDEX ){
 			m_next_index++;
 			if ( m_next_index >= maxindex ) m_next_index = -1;
-		}else{
+		}else{ // -ENUMENTRY_WITHMARK / -ENUMENTRY_MARKONLY
 			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT_HS, &m_next_index) == 0 ){
 				(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT, &m_next_index);
 			}
@@ -701,6 +703,11 @@ STDMETHODIMP CEntry::Skip(ULONG celt)
 STDMETHODIMP CEntry::Reset()
 {
 	Debug_WriteLog(CLASSNAMES "::Reset", NULL);
+
+	if ( EnumMode < 0 ){ // égópçœÇ›Ç»ÇÁèâä˙âªópÇÃílÇ…ñﬂÇ∑
+		EnumMode = -EnumMode;
+	}
+
 	m_index = -2;
 	m_next_index = -2;
 	return S_OK;
@@ -827,16 +834,16 @@ STDMETHODIMP CEntry::atEnd(long * value )
 {
 	int result;
 
-	if ( EnumMode < 0 ){ // èâÇﬂÇƒ
-		EnumMode = -EnumMode - 1;
-		if ( EnumMode == 2 ){
+	if ( EnumMode > 0 ){ // èâÇﬂÇƒ
+		EnumMode = -EnumMode;
+		if ( EnumMode == -ENUMENTRY_INDEX ){
 			*value = CheckNextEntryAt(0);
 			return S_OK;
 		}
 
 		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST_HS, &result);
 		if ( result == -1 ){
-			if ( EnumMode == 0 ){
+			if ( EnumMode == -ENUMENTRY_WITHMARK ){
 				(*m_ppxa)->Function(*m_ppxa, PPXCMDID_CSRINDEX, &result);
 				m_index = result;
 			}else{
@@ -853,7 +860,7 @@ STDMETHODIMP CEntry::atEnd(long * value )
 	}
 
 	// ÇQâÒñ⁄à»ç~
-	if ( EnumMode == 2 ){
+	if ( EnumMode == -ENUMENTRY_INDEX ){
 		*value = CheckNextEntryAt(m_index + 1);
 		return S_OK;
 	}
@@ -879,14 +886,14 @@ STDMETHODIMP CEntry::get_AllMark(IEntry ** Value )
 {
 	HRESULT result = Item(-1, Value);
 	if ( FAILED(result) ) return result;
-	static_cast<CEntry *>(*Value)->EnumMode = -2;
+	static_cast<CEntry *>(*Value)->EnumMode = ENUMENTRY_MARKONLY;
 	return result;
 }
 STDMETHODIMP CEntry::get_AllEntry(IEntry ** Value )
 {
 	HRESULT result = Item(-1, Value);
 	if ( FAILED(result) ) return result;
-	static_cast<CEntry *>(*Value)->EnumMode = -3;
+	static_cast<CEntry *>(*Value)->EnumMode = ENUMENTRY_INDEX;
 	return result;
 }
 
@@ -902,7 +909,7 @@ CEnumEntry::CEnumEntry(InstanceValueStruct *InstanceValue, int EnumMode)
 
 	m_centry = new CEntry(InstanceValue);
 	m_centry->AddRef();
-	if ( EnumMode < 0 ) EnumMode = -EnumMode - 1;
+	if ( EnumMode > 0 ) EnumMode = -EnumMode;
 	m_centry->EnumMode = EnumMode;
 	m_centry->Reset();
 }

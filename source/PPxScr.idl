@@ -3,9 +3,9 @@
   version(1.0), 
   helpstring("PPx Script Module"), 
   hidden, 
-  custom(DE77BA65-517C-11D1-A2DA-0000F8773CE9, "Created by MIDL version 8.01.0628 at Tue Jan 19 12:14:07 2038\n"), 
+  custom(DE77BA64-517C-11D1-A2DA-0000F8773CE9, 134283892), 
   custom(DE77BA63-517C-11D1-A2DA-0000F8773CE9, 2147483647), 
-  custom(DE77BA64-517C-11D1-A2DA-0000F8773CE9, 134283892)
+  custom(DE77BA65-517C-11D1-A2DA-0000F8773CE9, "Created by MIDL version 8.01.0628 at Tue Jan 19 12:14:07 2038\n")
     
 ]
 library PPxScr
@@ -528,6 +528,10 @@ library PPxScr
     id(0x00000035)
     ]
     HRESULT _stdcall option([in] BSTR name, [in, optional] VARIANT param, [out, retval] VARIANT * Value );
+    [
+    id(0x00000036)
+    ]
+    HRESULT _stdcall LoadCount([in] long type, [out] long * count );
   };
 
   [
@@ -771,7 +775,7 @@ library PPxScr
     [
     id(0x0000001E)
     ]
-    HRESULT _stdcall IndexFrom([in] BSTR Name, [out, retval] long * moved );
+    HRESULT _stdcall IndexFrom([in] BSTR name, [out, retval] long * moved );
   };
 
   [
@@ -816,16 +820,6 @@ library PPxScr
     HRESULT _stdcall index([in] long Value );
     [
     propget, 
-    id(0x00000003)
-    ]
-    HRESULT _stdcall Name([out, retval] BSTR * Value );
-    [
-    propput, 
-    id(0x00000003)
-    ]
-    HRESULT _stdcall Name([in] BSTR Value );
-    [
-    propget, 
     id(0x00000007)
     ]
     HRESULT _stdcall Tab([out, retval] ITab ** Value /*åxçê : ç\ë¢ëÃÇÃñºëOÇåüèÿÇ≈Ç´Ç‹ÇπÇÒÇ≈ÇµÇΩ : */ );
@@ -850,6 +844,36 @@ library PPxScr
     id(0x00000008)
     ]
     HRESULT _stdcall IndexFrom([in] BSTR ppcid, [out, retval] long * moved );
+    [
+    propget, 
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall GroupIndex([out, retval] long * Value );
+    [
+    propput, 
+    id(0x0000000B)
+    ]
+    HRESULT _stdcall GroupIndex([in] long Value );
+    [
+    propget, 
+    id(0x0000000C)
+    ]
+    HRESULT _stdcall GroupCount([out, retval] long * Value );
+    [
+    propget, 
+    id(0x0000000E)
+    ]
+    HRESULT _stdcall GroupName([out, retval] BSTR * Value );
+    [
+    propput, 
+    id(0x0000000E)
+    ]
+    HRESULT _stdcall GroupName([in] BSTR Value );
+    [
+    propget, 
+    id(0x0000000D)
+    ]
+    HRESULT _stdcall GroupList([out, retval] BSTR * Value );
   };
 
   [

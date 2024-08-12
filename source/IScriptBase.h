@@ -88,6 +88,7 @@ public:
 	STDMETHODIMP GetComboItemCount(long id, long *result);
 	STDMETHODIMP Enumerator(LPDISPATCH object, LPDISPATCH* Value);
 	STDMETHODIMP Include(BSTR filename);
+	STDMETHODIMP LoadCount(long type/*[in]*/, long* count/*[out]*/);
 
 //		BOOL GetPreObject(LPCOLESTR bstrPrefix, IDispatch **ppObject);
 	// PPx Properties
