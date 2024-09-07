@@ -34,9 +34,9 @@ typedef struct {
 	ScriptArgs arg;
 } OldPPxInfoStruct;
 
-extern int RunScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_type);
-extern void FreeStayInstance(void);
-extern PPXAPPINFOW DummyPPxAppInfo;
+int RunScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_type);
+int StayInfo(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc);
+void FreeStayInstance(void);
 
 #ifdef __BORLANDC__
  BOOL WINAPI DllEntryPoint(HINSTANCE hInstance, unsigned long reason, void *)
@@ -90,6 +90,12 @@ extern "C" EXTDLL int PPXAPI ModuleEntry(PPXAPPINFOW *ppxa, DWORD cmdID, PPXMODU
 			case 0x800570d3:
 				if ( !::wcscmp(pxs.command->commandname, L"VBS") ){
 					return RunScript(ppxa, pxs.command, L".vbs");
+				}
+				break;
+
+			case 0xd925fddf:
+				if ( (cmdID == PPXMEVENT_FUNCTION) && !::wcscmp(pxs.command->commandname, L"STAYINFO") ){
+					return StayInfo(ppxa, pxs.command);
 				}
 				break;
 		}
@@ -417,10 +423,10 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 		PPxScript = nextchain->site;
 
 		if ( (PPxScript->InstanceValue.stay.threadID == ThreadID) &&
+			 (PPxScript->InstanceValue.stay.hWnd == hWnd) &&
 			 ((StayMode >= ScriptStay_Stay) ?
 			   (PPxScript->InstanceValue.stay.mode == StayMode) :
-			   ((PPxScript->InstanceValue.stay.hWnd == hWnd) &&
-				(wcscmp(PPxScript->InstanceValue.ScriptName, source) == 0))) ){
+			   (wcscmp(PPxScript->InstanceValue.ScriptName, source) == 0)) ){
 			break;
 		}
 		chain = nextchain;
@@ -445,17 +451,30 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 			InvokeName = L"ppx_resume";
 		}else{	// インスタンス指定あり & １以上パラメータ なら eval
 			if ( inline_type == NULL ){
-				// 例 *script ":123", "filename"
-				WCHAR *ScriptImage = LoadScriptFile(param);
-				if ( ScriptImage == NULL ){
-					::PopupMessagef(ppxa, L"%s open error", param);
-					result = E_FAIL;
+				if ( wcscmp(PPxScript->InstanceValue.ScriptName, source) == 0 ){
+					// 常駐時スクリプトファイルなら ppx_resume
+					InvokeName = L"ppx_resume";
 				}else{
-					PPxScript->EvalScript(ScriptImage);
-					delete[] ScriptImage;
-					result = S_OK;
+					// 例 *script ":123", "filename"
+					WCHAR *ScriptImage = LoadScriptFile(param);
+					if ( ScriptImage == NULL ){
+						::PopupMessagef(ppxa, L"%s open error", param);
+						result = E_FAIL;
+					}else{
+						if ( paramcount > 0 ){
+							PPxScript->InstanceValue.arg.param = param + wcslen(param) + 1; // source をスキップ
+							PPxScript->InstanceValue.arg.count = paramcount - 1;
+						}
+						PPxScript->EvalScript(ScriptImage);
+						delete[] ScriptImage;
+						result = S_OK;
+					}
 				}
 			}else{
+				if ( paramcount > 0 ){
+					PPxScript->InstanceValue.arg.param = param + wcslen(param) + 1; // source をスキップ
+					PPxScript->InstanceValue.arg.count = paramcount - 1;
+				}
 				// 例 *js ":123", "script"
 				PPxScript->EvalScript(param);
 				result = S_OK;
@@ -531,10 +550,18 @@ int RunScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_typ
 	WCHAR InvokeName[256];
 
 	InvokeName[0] = '\0';
-	if ( (pxc->paramcount > 0) && (pxc->param[0] == ':') ){
-		pxcbuf = *pxc;
-		pxc = &pxcbuf;
-		CheckOption(pxc, &StayMode, InvokeName);
+	if ( pxc->paramcount > 0 ){
+		if ( pxc->param[0] == ':' ){
+			pxcbuf = *pxc;
+			pxc = &pxcbuf;
+			CheckOption(pxc, &StayMode, InvokeName);
+		}else if ( (pxc->param[0] == '\0') && (pxc->paramcount >= 2) ){ // 第１パラメータが無いときは、shift
+			// *script 変数(空 または :12345),source ができるようにする
+			pxcbuf = *pxc;
+			pxcbuf.paramcount--;
+			pxcbuf.param += 1; // '\0' をスキップ
+			pxc = &pxcbuf;
+		}
 	}
 
 	if ( StayChains.next != NULL ){
@@ -757,4 +784,58 @@ WCHAR *LoadScriptFile(const WCHAR *filename)
 	}
 	delete[] TextImageA;
 	return TextImageW;
+}
+
+const TCHAR InfoForm[] = L" %d";
+
+int StayInfo(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc)
+{
+	CScriptSite *PPxScript;
+	SITECHAIN *chain = &StayChains, *nextchain;
+	DWORD ThreadID = GetCurrentThreadId();
+	HWND hWnd = ppxa->hWnd;
+	WCHAR *dest = pxc->resultstring, *destmax = dest + (CMDLINESIZE - 12);
+	int StayMode = ScriptStay_None;
+
+	dest[0] = '\0';
+
+	if ( pxc->paramcount > 0 ){
+		const WCHAR *source = pxc->param;
+
+		if ( *source == ':' ) source++;
+		StayMode = GetIntNumberW(source);
+		if ( StayMode >= ScriptStay_Stay ){
+			dest[0] = '0';
+			dest[1] = '\0';
+		}
+	}
+
+	if ( StayChains.next == NULL ) return PPXMRESULT_DONE;
+
+	EnterCriticalSection(&StayLock);
+	for(;;){
+		nextchain = chain->next;
+		if ( nextchain == NULL ) break;
+
+		PPxScript = nextchain->site;
+
+		if ( (PPxScript->InstanceValue.stay.threadID == ThreadID) &&
+			 (PPxScript->InstanceValue.stay.hWnd == hWnd) ){
+			// インスタンス指定有り→個別結果
+			if ( StayMode >= ScriptStay_Stay ){
+				if ( PPxScript->InstanceValue.stay.mode == StayMode ){
+					dest[0] = '1';
+					break;
+				}
+			}else{ // 指定無し→一覧
+				dest += wsprintf(dest, (dest == pxc->resultstring) ?
+						InfoForm + 1 : InfoForm,
+						PPxScript->InstanceValue.stay.mode);
+				if ( dest >= destmax ) break;
+			}
+		}
+		chain = nextchain;
+	}
+	LeaveCriticalSection(&StayLock);
+	return PPXMRESULT_DONE;
 }
