@@ -1,7 +1,7 @@
 @echo off
 set RETAIL=1
 rem *** set value ***
-set arcname=ppxscr21p6.zip
+set arcname=ppxscr22.zip
 set readme=PPXSCR.TXT
 set srcname=ppxscrsr.7z
 set exename=PPXSCR

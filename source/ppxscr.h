@@ -6,8 +6,8 @@
 #include "../../ppx/PPCOMMON.H"
 #define TOSTRMACRO(item)	#item
 
-#define SCRIPTMODULEVER		21  // Release number
-#define SCRIPTMODULEVERSTR	UNICODESTR(TOSTRMACRO(21))
+#define SCRIPTMODULEVER		22  // Release number
+#define SCRIPTMODULEVERSTR	UNICODESTR(TOSTRMACRO(22))
 
 
 #define DWORDPP 4294967296.	// 0x1 0000 0000 (DWORD Ç≈àµÇ¶Ç»Ç¢ç≈è≠êî)

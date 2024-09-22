@@ -36,7 +36,8 @@ typedef struct {
 
 int RunScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_type);
 int StayInfo(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc);
-void FreeStayInstance(void);
+void FreeStayInstance(PPXAPPINFOW *ppxa, BOOL terminate);
+void CleanUpModule(void);
 
 #ifdef __BORLANDC__
  BOOL WINAPI DllEntryPoint(HINSTANCE hInstance, unsigned long reason, void *)
@@ -103,19 +104,26 @@ extern "C" EXTDLL int PPXAPI ModuleEntry(PPXAPPINFOW *ppxa, DWORD cmdID, PPXMODU
 	}
 
 	if ( cmdID == PPXMEVENT_CLEANUP ){
-		// 1.97 以前は CleanUp 時に CoUninitialize() になってることがあるので無効に
-		if ( PPxVersion > 19700 ) FreeStayInstance();
+		CleanUpModule();
 		return PPXMRESULT_DONE;
 	}
 
 	if ( cmdID == PPXMEVENT_CLOSETHREAD ){ // 1.97+1 から有効
-		FreeStayInstance();
+		FreeStayInstance(ppxa, TRUE);
+		return PPXMRESULT_DONE;
+	}
+
+	if ( cmdID == PPXMEVENT_DESTROY ){ // 1.98+4 から有効
+		FreeStayInstance(ppxa, FALSE);
 		return PPXMRESULT_DONE;
 	}
 
 	if ( cmdID == PPXM_INFORMATION ){
 		if ( pxs.info->infotype == 0 ){
-			pxs.info->typeflags = PPMTYPEFLAGS(PPXMEVENT_CLEANUP) |
+			pxs.info->typeflags = PPMTYPEFLAGS(PPXM_INFORMATION) |
+					PPMTYPEFLAGS(PPXMEVENT_CLEANUP) |
+					PPMTYPEFLAGS(PPXMEVENT_CLOSETHREAD) |
+					PPMTYPEFLAGS(PPXMEVENT_DESTROY) |
 					PPMTYPEFLAGS(PPXMEVENT_COMMAND) |
 					PPMTYPEFLAGS(PPXMEVENT_FUNCTION);
 			wcscpy(pxs.info->copyright, L"PPx Script Module R" SCRIPTMODULEVERSTR L"  Copyright (c)TORO");
@@ -354,7 +362,7 @@ void FirstStayInstance(CScriptSite *PPxScript)
 }
 
 // 同じスレッドの常駐解放
-void FreeStayInstance(void)
+void FreeStayInstance(PPXAPPINFOW *ppxa, BOOL terminate)
 {
 	CScriptSite *PPxScript;
 	DWORD ThreadID = GetCurrentThreadId();
@@ -365,15 +373,23 @@ void FreeStayInstance(void)
 		if ( nextchain == NULL ) break;
 
 		PPxScript = nextchain->site;
-		if ( PPxScript->InstanceValue.stay.threadID == ThreadID ){
+		if ( (PPxScript->InstanceValue.stay.threadID == ThreadID) &&
+			 (terminate ||
+			  (PPxScript->InstanceValue.stay.hWnd == ppxa->hWnd)) ){
 			chain->next = nextchain->next; // drop
 
-			PPxScript->InstanceValue.ppxa = &DummyPPxAppInfo; // info->stay.ppxa;
+			PPxScript->InstanceValue.ppxa = ppxa;
 			PPxScript->InstanceValue.arg.count = 0;
 			PPxScript->InstanceValue.arg.resultstring = NULL;
 			PPxScript->InvokeScript(L"ppx_finally", NULL, 0);
-			PPxScript->QuitScript(); // ここで時間が掛かっている
-			PPxScript->Release();
+
+			// 強制終了、又は再入状態ではない→ここで終了する
+			if ( terminate || (PPxScript->InstanceValue.stay.entry < 0) ){
+				PPxScript->QuitScript(); // ここで時間が掛かっている
+				PPxScript->Release();
+			}else{ // 再入しているので、常駐の解除指示を行う
+				PPxScript->InstanceValue.stay.mode = ScriptStay_None;
+			}
 			chain = &StayChains;
 			continue;
 		}
@@ -385,7 +401,7 @@ void CleanUpModule(void)
 {
 	if ( ::DLLFileName[0] == '\0' ) return;
 	// 1.97 以前は CleanUp 時に CoUninitialize() になってることがあるので無効に
-	if ( PPxVersion > 19700 ) FreeStayInstance();
+	if ( PPxVersion > 19700 ) FreeStayInstance(&DummyPPxAppInfo, TRUE);
 //	::OleUninitialize();
 	::DLLFileName[0] = '\0'; // 念のため
 }

@@ -416,7 +416,7 @@ int CScriptSite::RunScript()
 	Debug_WriteLog(CLASSNAMES "::RunScript-start ending", NULL);
 	InstanceValue.Engine->GetScriptState(&sstate);
 
-	if ( InstanceValue.stay.mode == 0 ){
+	if ( InstanceValue.stay.mode == ScriptStay_None ){
 		if ( sstate < SCRIPTSTATE_CLOSED ){
 			if ( sstate < SCRIPTSTATE_DISCONNECTED ){
 				InstanceValue.Engine->SetScriptState(SCRIPTSTATE_DISCONNECTED);
