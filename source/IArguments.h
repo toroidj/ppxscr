@@ -7,17 +7,17 @@
 class CArguments : public IArguments
 {
 public:
-	CArguments(PPXAPPINFOW **ppxa, const WCHAR *Args, int ArgsCount);
+	CArguments(PPXAPPINFOW **ppxa, ITypeInfo *ArgsTypeInfo, const WCHAR *Args, int ArgsCount);
 // IUnknown
 	STDMETHODIMP QueryInterface(REFIID riid, void **ppvObj);
 	STDMETHODIMP_(ULONG) AddRef();
 	STDMETHODIMP_(ULONG) Release();
 
 // IDispatch
-	STDMETHODIMP GetTypeInfoCount(/* [out] */UINT *iTInfo);
-	STDMETHODIMP GetTypeInfo(/* [in] */UINT iTInfo, /* [in] */LCID lcid, /* [out] */ITypeInfo **ppTInfo);
-	STDMETHODIMP GetIDsOfNames(/* [in] */REFIID riid, /* [size_is][in] */OLECHAR **rgszNames, /* [in] */UINT cNames, /* [in] */LCID lcid, /* [size_is][out] */DISPID *rgDispId);
-	STDMETHODIMP Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID riid, /* [in] */LCID lcid, /* [in] */WORD wFlags, /* [out][in] */DISPPARAMS *pDispParams, /* [out] */VARIANT *pVarResult, /* [out] */EXCEPINFO *pExcepInfo, /* [out] */UINT *puArgErr);
+	STDMETHODIMP GetTypeInfoCount(UINT *iTInfo);
+	STDMETHODIMP GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo **ppTInfo);
+	STDMETHODIMP GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID lcid, DISPID *rgDispId);
+	STDMETHODIMP Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr);
 
 // ICollection
 					// _NewEnum‚ÍDISPID_NEWENUM(-4)ŒÅ’è

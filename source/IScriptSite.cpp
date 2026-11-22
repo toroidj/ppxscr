@@ -27,26 +27,22 @@ const CLSID CLSID_Chakra = { 0x1B7CD997, 0xE5FF, 0x4932, {0xA7, 0xA6, 0x2A, 0x9E
 
 int UsedJSEngine = -1;
 
+const WCHAR StrScriptOpenError[] = L"%s open error";
+const WCHAR StrScriptParseError[] = L"Error calling Script Parser.";
+const WCHAR StrScriptEngineError[] = L"Failed to create scripting engine.";
+const WCHAR StrJS9andChakraError[] = L"Can't use JScript9 'and' Chakra.";
+
 CScriptSite::CScriptSite(PPXAPPINFOW *ppxaorg)
 {
 	T_IUNKNOWN_INITDEFINE();
 	m_ScriptImage = NULL;
 
+	// InstanceValueStruct InstanceValue{0} ができない旧仕様に対応
+	memset(&InstanceValue, 0, sizeof(InstanceValue));
+
 	InstanceValue.ppxa = ppxaorg;
 	InstanceValue.Site = this;
-	InstanceValue.Base = NULL;
-	InstanceValue.Engine = NULL;
-	InstanceValue.Parser = NULL;
-
-	InstanceValue.SourceIDserver = 0;
-	InstanceValue.IncludeNames = NULL;
 	InstanceValue.stay.mode = ScriptStay_None;
-	InstanceValue.stay.threadID = NULL;
-	InstanceValue.stay.entry = 0;
-	InstanceValue.stay.ppxa = NULL;
-
-	InstanceValue.IDNameMode = 0;
-	InstanceValue.Js9ForceCloseMode = 0;
 }
 
 CScriptSite::~CScriptSite()
@@ -73,6 +69,25 @@ CScriptSite::~CScriptSite()
 	if ( InstanceValue.stay.ppxa != NULL ){
 		HeapFree(GetProcessHeap(), 0, InstanceValue.stay.ppxa);
 	}
+	if ( InstanceValue.ArgumentsTypeInfo != NULL ){
+		InstanceValue.ArgumentsTypeInfo->Release();
+	}
+	if ( InstanceValue.BaseTypeInfo != NULL ){
+		InstanceValue.BaseTypeInfo->Release();
+	}
+	if ( InstanceValue.EntryTypeInfo != NULL ){
+		InstanceValue.EntryTypeInfo->Release();
+	}
+	if ( InstanceValue.PaneTypeInfo != NULL ){
+		InstanceValue.PaneTypeInfo->Release();
+	}
+	if ( InstanceValue.PPxEnumTypeInfo != NULL ){
+		InstanceValue.PPxEnumTypeInfo->Release();
+	}
+	if ( InstanceValue.TabTypeInfo != NULL ){
+		InstanceValue.TabTypeInfo->Release();
+	}
+
 	if ( m_ScriptImage != NULL ) delete[] m_ScriptImage;
 }
 //----------------------------------------------------- IUnknown
@@ -104,33 +119,42 @@ STDMETHODIMP CScriptSite::QueryInterface(REFIID iid, void **ppv)
 }
 
 //----------------------------------------------------- IActiveScriptSite
-STDMETHODIMP CScriptSite::GetLCID(LCID *)
+STDMETHODIMP CScriptSite::GetLCID(LCID *plcid)
 {
-	Debug_WriteLog(CLASSNAMES "::GetLCID", NULL);
-	return E_NOTIMPL;
+	if ( plcid == NULL ) return E_POINTER;
+	*plcid = LOCALE_USER_DEFAULT;
+	return S_OK;
 }
 
 // ParseScriptText によるキーワードの解析時に呼び出される
 STDMETHODIMP CScriptSite::GetItemInfo(LPCOLESTR pstrName, DWORD dwReturnMask, IUnknown **ppunkItem, ITypeInfo **ppTypeInfo)
 {
-	if ( pstrName == NULL ) return E_NOTIMPL;
+	if ( pstrName == NULL ) return E_INVALIDARG;
 	Debug_WriteLog(CLASSNAMES "::GetItemInfo ", pstrName);
 	if ( !stricmpW(L"PPx", pstrName) || !stricmpW(L"WScript", pstrName) ){
 		HRESULT hr = E_INVALIDARG;
 
 		if ( dwReturnMask & SCRIPTINFO_IUNKNOWN ){
 			if ( ppunkItem == NULL ) return E_INVALIDARG;
-			if ( FAILED(InstanceValue.Base->QueryInterface(IID_IUnknown, (void**)ppunkItem)) ){
-				return E_POINTER;
+			if ( FAILED(hr = InstanceValue.Base->QueryInterface(IID_IUnknown, (void**)ppunkItem)) ){
+				return hr;
 			}
-			hr = S_OK;
 		}
 		if ( dwReturnMask & SCRIPTINFO_ITYPEINFO ){
-			if ( ppTypeInfo == NULL ) return E_INVALIDARG;
-			if ( FAILED(InstanceValue.Base->GetTypeInfo(0, 0, ppTypeInfo)) ){
-				return E_POINTER;
+			if ( ppTypeInfo == NULL ){
+				if ( dwReturnMask & SCRIPTINFO_IUNKNOWN ){
+					(*ppunkItem)->Release();
+					*ppunkItem = NULL;
+				}
+				return E_INVALIDARG;
 			}
-			hr = S_OK;
+			if ( FAILED(hr = InstanceValue.Base->GetTypeInfo(0, 0, ppTypeInfo)) ){
+				if ( dwReturnMask & SCRIPTINFO_IUNKNOWN ){
+					(*ppunkItem)->Release();
+					*ppunkItem = NULL;
+				}
+				return hr;
+			}
 		}
 		return hr;
 	}		// 該当無し
@@ -200,35 +224,39 @@ STDMETHODIMP CScriptSite::OnScriptError(IActiveScriptError *ase)
 {
 	WCHAR source[0x300];
 	EXCEPINFO ei;
-	DWORD SourceContext;
-	ULONG line;
-	LONG column;
+	DWORD SourceContext = 0;
+	ULONG line = 0;
+	LONG column = 0;
 
 	Debug_WriteLog(CLASSNAMES "::OnScriptError", NULL);
 	if ( InstanceValue.Js9ForceCloseMode < 0 ) return S_OK; // JScript9 はエラー終了で無理矢理終わらせることがあるので、ここで判別
 	memset(&ei, 0, sizeof(ei));
 	if ( SUCCEEDED(ase->GetExceptionInfo(&ei)) ){
-		source[0] = '\0';
-		ase->GetSourcePosition(&SourceContext, &line, &column);
-		if ( SourceContext > 0 ){
+		if ( ei.scode != SCRIPT_E_REPORTED ){ // エラー通知していないなら通知
 			WCHAR *srcptr = InstanceValue.IncludeNames;
-			WCHAR *nextptr;
-			for (;; ){
-				nextptr = wcschr(srcptr, '\1');
-				if ( (--SourceContext == 0) || (nextptr == NULL) ) break;
-				srcptr = nextptr + 1;
-			}
-			if ( nextptr != NULL ) *nextptr = '\0';
-			wsprintf(source, L"<%s>", srcptr);
-			if ( nextptr != NULL ) *nextptr = '\1';
-		}
-		PopupMessagef(InstanceValue.ppxa,
-				L"Script error \"%s\" %sline:%u, col:%u\n%s(code: %d)",
-				InstanceValue.ScriptName,
-				source,
-				line + 1, column + 1,
-				ei.bstrDescription, ei.wCode);
 
+			source[0] = '\0';
+			ase->GetSourcePosition(&SourceContext, &line, &column);
+			if ( (SourceContext > 0) && (srcptr != NULL) ){
+				WCHAR *nextptr;
+				for (;; ){
+					nextptr = wcschr(srcptr, '\1');
+					if ( (--SourceContext == 0) || (nextptr == NULL) ) break;
+					srcptr = nextptr + 1;
+				}
+				if ( nextptr != NULL ) *nextptr = '\0';
+				if ( strlenW(srcptr) < (TSIZEOFW(source) - 4) ){ // 大きすぎるときは、見にくいので表示しない
+					wsprintf(source, L"<%s>", srcptr);
+				}
+				if ( nextptr != NULL ) *nextptr = '\1';
+			}
+			::PopupMessagef(InstanceValue.ppxa,
+					L"Script error \"%s\" %sline:%u, col:%u\n%s(code: 0x%x)",
+					InstanceValue.ScriptName,
+					source,
+					line + 1, column + 1,
+					ei.bstrDescription, (ei.wCode != 0) ? ei.wCode : ei.scode);
+		}
 		SysFreeString(ei.bstrSource);
 		SysFreeString(ei.bstrDescription);
 		SysFreeString(ei.bstrHelpFile);
@@ -282,21 +310,34 @@ int CScriptSite::InitializeScriptSite(PPXMCOMMANDSTRUCT *pxc, const WCHAR *inlin
 									// 言語エンジン初期化 ---------------------
 									// 言語を決定
 	wcscpy(scripttype, L"VBScript");
+	// wcsrchr の結果が本来の拡張子以外の場合であっても、スクリプト言語が決定
+	// されないという、拡張子がない結果と同じになるため、ファイル名分離を省略
 	extp = (inline_type == NULL) ? wcsrchr(pxc->param, '.') : inline_type;
 
-	if ( (extp != NULL) && (*(extp + 1) == 'j') ){
+	// .jsX の判定
+	if ( (extp != NULL) && (*(extp + 1) == 'j') && (*(extp + 2) == 's') ){
 		int js_type = 0;
 
-		if ( wcscmp(extp + 2, L"s9") == 0 ){ // .js9
+		if ( wcscmp(extp + 3, L"9") == 0 ){ // .js9
 			js_type = SCRIPTLANGUAGEVERSION_ECMA5;
-		}else if ( wcscmp(extp + 2, L"sc") == 0 ){ // .jsc
+		}else if ( wcscmp(extp + 3, L"c") == 0 ){ // .jsc
 			js_type = SCRIPTLANGUAGEVERSION_CHAKRA;
-		}else if ( UseJScript9 && stricmpW(extp + 2, L"s") == 0 ){ //.js
-			js_type = UseJScript9;
+		}else if ( *(extp + 3) == '\0' ){ // .js
+			if ( UseJScript9 != 0 ){
+				js_type = UseJScript9;
+			}else if ( OSver.dwBuildNumber >= WINBUILD_11_24H2 ){
+				// Windows 11 24H2 以降は、jscript9Legacy.dll が使用され、
+				// PPx.Quit で異常終了を起こす恐れがあるため、jscript9 対策を
+				// 有効にする
+				InstanceValue.Js9ForceCloseMode = 1;
+			}
 		}
 		if ( js_type != 0 ){
+			if ( OSver.dwBuildNumber >= WINBUILD_11_24H2 ){
+				InstanceValue.Js9ForceCloseMode = 1;
+			}
 			if ( (UsedJSEngine > 0) && (js_type != UsedJSEngine) ){
-				PopupMessage(InstanceValue.ppxa, L"Can't use JScript9 'and' Chakra.");
+				::PopupMessage(InstanceValue.ppxa, StrJS9andChakraError);
 				return PPXMRESULT_STOP;
 			}
 
@@ -324,6 +365,7 @@ int CScriptSite::InitializeScriptSite(PPXMCOMMANDSTRUCT *pxc, const WCHAR *inlin
 					} else{
 						InstanceValue.Engine->Release();
 						InstanceValue.Engine = NULL;
+						js_type = UsedJSEngine;
 					}
 				}
 				UsedJSEngine = js_type;
@@ -336,46 +378,58 @@ int CScriptSite::InitializeScriptSite(PPXMCOMMANDSTRUCT *pxc, const WCHAR *inlin
 		if ( extp != NULL ){
 			WCHAR extname[MAX_PATH];
 
-			if ( FALSE != ::GetRegStringW(HKEY_CLASSES_ROOT, extp, ::NullStr, extname, sizeof(extname)) ){
+			if ( FALSE != ::GetRegStringW(HKEY_CLASSES_ROOT, extp, ::NilStrW, extname, sizeof(extname) - 32) ){
 				wcscat(extname, L"\\ScriptEngine");
-				::GetRegStringW(HKEY_CLASSES_ROOT, extname, ::NullStr, scripttype, sizeof(scripttype));
+				::GetRegStringW(HKEY_CLASSES_ROOT, extname, ::NilStrW, scripttype, sizeof(scripttype));
 /*
 				if ( scripttype[0] != '{' ){
 					wcscpy(extname, scripttype);
 					wcscat(extname, L"\\CLSID");
-					::GetRegStringW(HKEY_CLASSES_ROOT, extname, ::NullStr, scripttype, sizeof(scripttype));
+					::GetRegStringW(HKEY_CLASSES_ROOT, extname, ::NilStrW, scripttype, sizeof(scripttype));
 					Debug_WriteLog(CLASSNAMES "::InitializeScriptSite :", L" %s ", scripttype);
 				}
 */
 			}
 		}
 		if ( FAILED(CLSIDFromProgID(scripttype, &m_EngineClsid)) ){
-			::PopupMessage(InstanceValue.ppxa, L"Failed to create scripting engine.");
+			::PopupMessage(InstanceValue.ppxa, StrScriptEngineError);
 			return PPXMRESULT_STOP;
 		}
 									// IActiveScript にエンジン登録
 		if ( FAILED(CoCreateInstance(m_EngineClsid, NULL, CLSCTX_INPROC_SERVER,
 			IID_IActiveScript, (void **)&InstanceValue.Engine)) ){
-			::PopupMessage(InstanceValue.ppxa, L"Failed to create scripting engine.");
+			::PopupMessage(InstanceValue.ppxa, StrScriptEngineError);
+			InstanceValue.Engine = NULL;
 			return PPXMRESULT_STOP;
 		}
 		InstanceValue.Engine->SetScriptState(SCRIPTSTATE_UNINITIALIZED);
 	}
-	wcscpy(InstanceValue.ScriptName, pxc->param);
+	stplimcpyW(InstanceValue.ScriptName, pxc->param, TSIZEOFW(InstanceValue.ScriptName));
 	InstanceValue.arg.param = pxc->param;
 	InstanceValue.arg.count = pxc->paramcount - 1;
 	InstanceValue.arg.resultstring = pxc->resultstring;
 	InstanceValue.stay.mode = StayMode;
 
+	if ( FAILED(::LoadSelfTypeInfo(&InstanceValue.BaseTypeInfo, CLSID_PPxObject)) ){
+		::PopupMessage(InstanceValue.ppxa, StrScriptEngineError);
+		return PPXMRESULT_STOP;
+	}
+
 	InstanceValue.Base = new CScriptBase(&InstanceValue);
+	if ( InstanceValue.Base == NULL ){
+		::PopupMessage(InstanceValue.ppxa, StrScriptEngineError);
+		return PPXMRESULT_STOP;
+	}
 	InstanceValue.Base->AddRef();
 
 	/*hr = */InstanceValue.Engine->SetScriptSite(this);
-	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_INITIALIZED);
 
-	/*hr = */InstanceValue.Engine->QueryInterface(IID_IActiveScriptParse, (void**)&InstanceValue.Parser);
+	if ( FAILED(InstanceValue.Engine->QueryInterface(IID_IActiveScriptParse, (void**)&InstanceValue.Parser)) ){
+		::PopupMessage(InstanceValue.ppxa, StrScriptParseError);
+		return PPXMRESULT_STOP;
+	}
 	if ( FAILED(InstanceValue.Parser->InitNew()) ){
-		::PopupMessage(InstanceValue.ppxa, L"Error calling Parser.");
+		::PopupMessage(InstanceValue.ppxa, StrScriptParseError);
 		return PPXMRESULT_STOP;
 	}
 									// スクリプト読み込み ---------------------
@@ -384,7 +438,7 @@ int CScriptSite::InitializeScriptSite(PPXMCOMMANDSTRUCT *pxc, const WCHAR *inlin
 	}else{
 		m_ScriptImage = LoadScriptFile(pxc->param);
 		if ( m_ScriptImage == NULL ){
-			::PopupMessagef(InstanceValue.ppxa, L"%s open error", pxc->param);
+			::PopupMessagef(InstanceValue.ppxa, StrScriptOpenError, pxc->param);
 			return PPXMRESULT_STOP;
 		}
 		ScriptText = m_ScriptImage;
@@ -393,14 +447,18 @@ int CScriptSite::InitializeScriptSite(PPXMCOMMANDSTRUCT *pxc, const WCHAR *inlin
 	// Ruby は、SCRIPTITEM_GLOBALMEMBERS を指定すると落ちる？
 	InstanceValue.Engine->AddNamedItem(L"PPx", SCRIPTITEM_GLOBALMEMBERS | SCRIPTITEM_ISPERSISTENT | SCRIPTITEM_ISVISIBLE);
 
-	HRESULT hr = InstanceValue.Parser->ParseScriptText(ScriptText, NULL,
+	if ( FAILED(InstanceValue.Parser->ParseScriptText(ScriptText, NULL,
 			NULL, NULL, InstanceValue.SourceIDserver++, 0,
-			SCRIPTTEXT_ISVISIBLE, NULL, NULL);
-	if ( FAILED(hr) ) return PPXMRESULT_STOP;
+			SCRIPTTEXT_ISVISIBLE, NULL, NULL)) ){
+		return PPXMRESULT_STOP;
+	}
 
 	if ( StayMode >= ScriptStay_Stay ){
 		ChainStayInstance(&InstanceValue, StayMode);
 	}
+
+	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_INITIALIZED);
+
 	return PPXMRESULT_DONE;
 }
 // スクリプトを実行する -------------------------------------------------------
@@ -411,7 +469,8 @@ int CScriptSite::RunScript()
 	Debug_WriteLog(CLASSNAMES "::RunScript", NULL);
 	// スクリプトの解析
 	InstanceValue.Base->Var_ResultStatus = PPXMRESULT_DONE;
-	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_STARTED);
+	// 各 SetScriptState の結果は意図して無視中。
+	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_STARTED); // 実行可能(sync待ち)
 	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_CONNECTED); // 実行開始
 	Debug_WriteLog(CLASSNAMES "::RunScript-start ending", NULL);
 	InstanceValue.Engine->GetScriptState(&sstate);
@@ -431,8 +490,8 @@ int CScriptSite::RunScript()
 void CScriptSite::QuitScript()
 {
 	Debug_WriteLog(CLASSNAMES "::QuitScript", NULL);
-	InstanceValue.Base->SetResult();
-	InstanceValue.Engine->Close();
+	if ( InstanceValue.Base != NULL ) InstanceValue.Base->SetResult();
+	if ( InstanceValue.Engine != NULL ) InstanceValue.Engine->Close();
 }
 
 HRESULT CScriptSite::InvokeScript(const WCHAR *funcname, const WCHAR *param, int paramcount)
@@ -441,11 +500,8 @@ HRESULT CScriptSite::InvokeScript(const WCHAR *funcname, const WCHAR *param, int
 	IDispatch *pDisp;
 	DISPID id;
 
-//	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_INITIALIZED);
-//	InstanceValue.Engine->SetScriptState(SCRIPTSTATE_STARTED);
-
 	if ( SUCCEEDED(result = InstanceValue.Engine->GetScriptDispatch(0, &pDisp)) ){
-		OLECHAR *olename, name[0x100];
+		OLECHAR *olename, name[MAXINVOKENAME];
 		wcscpy(name, funcname);
 		olename = name;
 
@@ -453,16 +509,27 @@ HRESULT CScriptSite::InvokeScript(const WCHAR *funcname, const WCHAR *param, int
 			DISPPARAMS dispParams;
 			EXCEPINFO exceptions;
 			UINT error = 0;
-
 			VARIANT *inputp, output, *outputp;
 
+			memset(&exceptions, 0, sizeof(exceptions));
 			if ( paramcount > 0 ){
 				inputp = new VARIANT[paramcount];
+				if ( inputp == NULL ){
+					pDisp->Release();
+					return E_OUTOFMEMORY;
+				}
 
 				for ( int c = paramcount - 1; c >= 0; c--){ // 順番反転
 					inputp[c].vt = VT_BSTR;
 					inputp[c].bstrVal = ::SysAllocString(param);
-					param += wcslen(param) + 1;
+					if ( inputp[c].bstrVal != NULL ){
+						param += wcslen(param) + 1;
+						continue;
+					}
+					for ( ; c < paramcount; c++ ) VariantClear(&inputp[c]);
+					delete[] inputp;
+					pDisp->Release();
+					return E_OUTOFMEMORY;
 				}
 			}else{
 				inputp = NULL;
@@ -489,11 +556,16 @@ HRESULT CScriptSite::InvokeScript(const WCHAR *funcname, const WCHAR *param, int
 			}
 
 			if ( outputp != NULL ){
-				if ( SUCCEEDED(::VariantChangeType(&output, &output, 0, VT_BSTR)) ){
+				if ( SUCCEEDED(result) &&
+					 (output.vt != VT_EMPTY) && (output.vt != VT_NULL) &&
+		 			 SUCCEEDED(::VariantChangeType(&output, &output, 0, VT_BSTR)) ){
 					InstanceValue.Base->set_result(output.bstrVal);
 				}
 				VariantClear(outputp);
 			}
+			SysFreeString(exceptions.bstrSource);
+			SysFreeString(exceptions.bstrDescription);
+			SysFreeString(exceptions.bstrHelpFile);
 		}
 		pDisp->Release();
 	}
@@ -508,6 +580,7 @@ HRESULT CScriptSite::EvalScript(const WCHAR *script)
 	result = InstanceValue.Parser->ParseScriptText(script, NULL, NULL,
 			NULL, 0, 0, SCRIPTTEXT_ISVISIBLE, NULL, NULL);
 	if ( SUCCEEDED(result) ){
+		// エラー判定は無視
 		InstanceValue.Engine->SetScriptState(SCRIPTSTATE_STARTED);
 	}
 	return result;

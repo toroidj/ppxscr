@@ -4,9 +4,8 @@
 #ifdef SDKRC
 #include <windows.h>
 #endif
-// TOROWIN.H, PPCOMMON.H は PPx のソースから流用する
-#include "../../ppx/TOROWIN.H"
-#include "../../ppx/PPCOMMON.H"
+#include "TOROWIN.H"
+#include "PPCOMMON.H"
 
 PPXRCDATA_CUSTOMIZE_LIST RCDATA "CUSTLIST.CFG"
 

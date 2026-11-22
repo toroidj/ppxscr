@@ -11,18 +11,15 @@
 
 #define CLASSNAME CArguments
 #define CLASSNAMES "CArguments"
-CArguments::CArguments(PPXAPPINFOW **ppxa, const WCHAR *Args, int ArgsCount)
+CArguments::CArguments(PPXAPPINFOW **ppxa, ITypeInfo *ArgsTypeInfo, const WCHAR *Args, int ArgsCount)
 {
 	T_IUNKNOWN_INITDEFINE();
 	m_ppxa = ppxa;
-	m_typeInfo = NULL;
+	m_typeInfo = ArgsTypeInfo;
+	m_typeInfo->AddRef();
 	m_Args = Args;
 	m_ArgsCount = ArgsCount;
 	m_EnumIndex = 0;
-
-	if ( FAILED(::LoadTypeInfo(&m_typeInfo, CLSID_IArguments_Class, 0)) ){
-		::PopupMessage(*ppxa, UNICODESTR(CLASSNAMES) UNICODESTR(" load error"));
-	}
 }
 
 //----------------------------------------------------- IUnknown
@@ -49,23 +46,27 @@ STDMETHODIMP CArguments::QueryInterface(REFIID iid, void **ppv)
 STDMETHODIMP CArguments::GetTypeInfoCount(UINT *iTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfoCount", NULL);
-	if ( (DWORD_PTR)iTInfo < 0x10000 ) return E_NOTIMPL;
+	if ( iTInfo == NULL ) return E_NOTIMPL;
 	*iTInfo = 1;
 	return S_OK;
 }
 
-STDMETHODIMP CArguments::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
+STDMETHODIMP CArguments::GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfo", NULL);
-	m_typeInfo->AddRef();
+	if ( iTInfo != 0 ){
+		*ppTInfo = NULL;
+		return DISP_E_BADINDEX;
+	}
 	*ppTInfo = m_typeInfo;
+	m_typeInfo->AddRef();
 	return S_OK;
 }
 
 STDMETHODIMP CArguments::GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID, DISPID *rgDispId)
 {
 	Debug_WriteLog(CLASSNAMES "::GetIDsOfNames:", *rgszNames);
-	if (riid != IID_NULL) return E_INVALIDARG;
+	if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
 	return DispGetIDsOfNames(m_typeInfo, rgszNames, cNames, rgDispId);
 }
 
@@ -108,15 +109,16 @@ STDMETHODIMP CArguments::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD 
 			case DISPID_VALUE: {
 				int index;
 
-				pVarResult->vt = VT_BSTR;
 				if ( pDispParams->cArgs == 0 ){
 					index = m_EnumIndex;
 				}else{
 					FixArgType(0, VT_I4);
 					index = pDispParams->rgvarg[0].lVal;
 				}
+				pVarResult->vt = VT_BSTR;
 				return Item(index, &pVarResult->bstrVal);
 			}
+
 			case DISPID_NEWENUM:
 				pVarResult->vt = VT_UNKNOWN;
 				return get__NewEnum(&pVarResult->punkVal);
@@ -126,8 +128,7 @@ STDMETHODIMP CArguments::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD 
 				return get_Count(&pVarResult->lVal);
 
 			case 5:
-				pVarResult->vt = VT_DISPATCH;
-				return get_Current(reinterpret_cast<IArguments**>(&pVarResult->pdispVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, get_Current(reinterpret_cast<IArguments**>(&pVarResult->pdispVal)));
 
 			case 6:
 				pVarResult->vt = VT_I4;
@@ -175,28 +176,28 @@ STDMETHODIMP CArguments::get_length(long *pcArgs)
 	return S_OK;
 }
 
-STDMETHODIMP CArguments::Reset( void )
+STDMETHODIMP CArguments::Reset(void)
 {
 	m_EnumIndex = 0;
 	return S_OK;
 }
 
-STDMETHODIMP CArguments::moveNext( long * Value )
+STDMETHODIMP CArguments::moveNext(long * Value)
 {
 	if ( m_EnumIndex < m_ArgsCount ) m_EnumIndex++;
 	*Value = m_EnumIndex;
 	return S_OK;
 }
 
-STDMETHODIMP CArguments::atEnd(long * value )
+STDMETHODIMP CArguments::atEnd(long * value)
 {
 	*value = (m_EnumIndex < m_ArgsCount) ? 0 : 1;
 	return S_OK;
 }
 
-STDMETHODIMP CArguments::get_Current(IArguments ** Value )
+STDMETHODIMP CArguments::get_Current(IArguments ** Value)
 {
-	*Value = new CArguments(m_ppxa, m_Args, m_ArgsCount);
+	*Value = new CArguments(m_ppxa, m_typeInfo, m_Args, m_ArgsCount);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;
 	(*Value)->AddRef();
 	return S_OK;
@@ -230,25 +231,37 @@ STDMETHODIMP CEnumArguments::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched
 {
 	const WCHAR *p;
 	int i;
+	ULONG celtindex, celtleft;
 
 	Debug_WriteLog(CLASSNAMES "::Next", NULL);
 	if ( CeltFetched != NULL ) *CeltFetched = 0;
 	if ( celt == 0 ) return S_OK;
-	if ( (rgvar == NULL) || ((celt != 1) && (CeltFetched == NULL)) ){
-		return E_INVALIDARG;
+
+	if ( rgvar != NULL ){
+		for ( celtindex = 0; celtindex < celt; celtindex++){
+			VariantInit(&rgvar[celtindex]);
+		}
 	}
+
 	if ( m_EnumIndex >= m_ArgsCount ) return S_FALSE;
 
 	p = m_Args;
 	for ( i = 0 ; i <= m_EnumIndex ; i++ ){
 		p += wcslen(p) + 1;
 	}
-
-	while( celt-- ){
+	celtleft = celt;
+	while( celtleft-- ){
 		if ( m_EnumIndex >= m_ArgsCount ) return S_FALSE;
-		rgvar->vt = VT_BSTR;
-		rgvar->bstrVal = ::SysAllocString(p);
-		rgvar++;
+		if ( rgvar != NULL ){
+			rgvar->vt = VT_BSTR;
+			rgvar->bstrVal = ::SysAllocString(p);
+			if ( rgvar->bstrVal == NULL ){
+				for ( ; celtleft < celt; celtleft++) VariantClear(rgvar--);
+				if ( CeltFetched != NULL ) *CeltFetched = 0;
+				return E_OUTOFMEMORY;
+			}
+			rgvar++;
+		}
 		m_EnumIndex++;
 		if ( CeltFetched != NULL ) (*CeltFetched)++;
 		p += wcslen(p) + 1;
@@ -274,7 +287,7 @@ STDMETHODIMP CEnumArguments::Reset()
 	return S_OK;
 }
 
-STDMETHODIMP CEnumArguments::Clone(IEnumVARIANT FAR* FAR*)
+STDMETHODIMP CEnumArguments::Clone(IEnumVARIANT **)
 {
 	Debug_WriteLog(CLASSNAMES "::Clone", NULL);
 	return E_NOTIMPL;
@@ -299,11 +312,9 @@ STDMETHODIMP GetArgumentItem(PPXAPPINFOW *ppxa, const WCHAR *ptr, long nIndex, l
 
 		param = (BSTR)ppxa->Function(ppxa, PPXCMDID_GETRAWPARAM, NULL);
 		if ( param == NULL ){
-			*pValue = ::SysAllocString(L"");
+			*pValue = ::SysAllocString(::NilStrW);
 			return S_OK;
 		}
-
-		*pValue = param;
 
 		ptr = param;
 		while ( (*ptr == ' ') || (*ptr == '\t') ) ptr++;
@@ -325,5 +336,6 @@ STDMETHODIMP GetArgumentItem(PPXAPPINFOW *ppxa, const WCHAR *ptr, long nIndex, l
 		::SysFreeString(param);
 		return S_OK;
 	}
-	return 0x800A0009;
+	*pValue = NULL;
+	return VB_E_OUTOFRANGE;
 }

@@ -17,7 +17,7 @@
 // Global Value
 OSVERSIONINFO OSver;
 HINSTANCE hDllInstance;
-const WCHAR NullStr[1] = L"";
+const WCHAR NilStrW[1] = L"";
 WCHAR DLLFileName[MAX_PATH];
 int UseJScript9 = 0;
 const WCHAR PPxScrTitle[] = L"PPxScr.dll";
@@ -39,11 +39,7 @@ int StayInfo(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc);
 void FreeStayInstance(PPXAPPINFOW *ppxa, BOOL terminate);
 void CleanUpModule(void);
 
-#ifdef __BORLANDC__
- BOOL WINAPI DllEntryPoint(HINSTANCE hInstance, unsigned long reason, void *)
-#else
- BOOL APIENTRY DllMain(HINSTANCE hInstance, unsigned long reason, void *)
-#endif
+BOOL WINAPI DllMain(HINSTANCE hInstance, unsigned long reason, void *)
 {
 	if ( reason == DLL_PROCESS_ATTACH ){
 		::hDllInstance = hInstance;
@@ -60,37 +56,37 @@ extern "C" EXTDLL int PPXAPI ModuleEntry(PPXAPPINFOW *ppxa, DWORD cmdID, PPXMODU
 		switch ( pxs.command->commandhash ){
 			case 0xc34c9454:
 				if ( !::wcscmp(pxs.command->commandname, L"SCRIPT") ){
-					return RunScript(ppxa, pxs.command, NULL);
+					return ::RunScript(ppxa, pxs.command, NULL);
 				}
 				break;
 
 			case 0xd3251577:
 				if ( !::wcscmp(pxs.command->commandname, L"SCRIPTW") ){
-					return RunScript(ppxa, pxs.command, NULL);
+					return ::RunScript(ppxa, pxs.command, NULL);
 				}
 				break;
 
 			case 0x800012d3:
 				if ( !::wcscmp(pxs.command->commandname, L"JS") ){
-					return RunScript(ppxa, pxs.command, L".js");
+					return ::RunScript(ppxa, pxs.command, L".js");
 				}
 				break;
 
 			case 0x8004b4c3:
 				if ( !::wcscmp(pxs.command->commandname, L"JSC") ){
-					return RunScript(ppxa, pxs.command, L".jsc");
+					return ::RunScript(ppxa, pxs.command, L".jsc");
 				}
 				break;
 
 			case 0x8004b4f9:
 				if ( !::wcscmp(pxs.command->commandname, L"JS9") ){
-					return RunScript(ppxa, pxs.command, L".js9");
+					return ::RunScript(ppxa, pxs.command, L".js9");
 				}
 				break;
 
 			case 0x800570d3:
 				if ( !::wcscmp(pxs.command->commandname, L"VBS") ){
-					return RunScript(ppxa, pxs.command, L".vbs");
+					return ::RunScript(ppxa, pxs.command, L".vbs");
 				}
 				break;
 
@@ -168,11 +164,29 @@ void PopupMessage(PPXAPPINFOW *ppxa, const WCHAR *message)
 {
 	if ( (ppxa == NULL) ||
 		 (ppxa->Function == NULL) ||
-		 (ppxa->Function(ppxa, PPXCMDID_MESSAGE, (void *)message) == 0) ){
+		 (ppxa->Function(ppxa, PPXCMDID_MESSAGE, (void *)message) == PPXA_INVALID_FUNCTION) ){
 		HWND hWnd = (ppxa == NULL) ? NULL : ppxa->hWnd;
 		MessageBoxW(hWnd, message, PPxScrTitle, MB_OK);
 	}
 }
+
+WCHAR *stplimcpyW(WCHAR *deststr, const WCHAR *srcstr, size_t maxlength)
+{
+	WCHAR code;
+	const WCHAR *destmax;
+
+	if ( maxlength > 0 ){
+		destmax = deststr + maxlength - 1;
+		while( deststr < destmax ){
+			code = *srcstr++;
+			if ( code == '\0' ) break;
+			*deststr++ = code;
+		}
+		*deststr = '\0';
+	}
+	return deststr;
+}
+
 #ifndef _WIN64
 void tvprintfW(WCHAR *dest, const WCHAR *format, va_list argptr)
 {
@@ -210,6 +224,24 @@ void tvprintfW(WCHAR *dest, const WCHAR *format, va_list argptr)
 					chr = value % 10;
 					*tmpp++ = chr + '0';
 					value /= 10;
+					if ( value == 0 ) break;
+				}
+				for(;;){
+					if ( tmpp == tmp ) break;
+					*dest++ = *(--tmpp);
+				}
+				continue;
+			}else if ( chr == 'x' ){
+				DWORD value;
+				WCHAR tmp[16], *tmpp;
+
+				tmpp = tmp;
+				format++;
+				value = va_arg(argptr, DWORD);
+				for(;;){
+					chr = value & 0xf;
+					*tmpp++ = (WCHAR)(chr + ((chr < 10) ? '0' : ('a' - 10)));
+					value >>= 4;
 					if ( value == 0 ) break;
 				}
 				for(;;){
@@ -325,6 +357,7 @@ void DropStayInstance(InstanceValueStruct *InstanceValue)
 	SITECHAIN *chain = &StayChains;
 	SITECHAIN *nextchain;
 
+	if ( PPxVersion == 0 ) return; // 常駐未使用
 	EnterCriticalSection(&StayLock);
 	for(;;){
 		nextchain = chain->next;
@@ -355,7 +388,7 @@ void FirstStayInstance(CScriptSite *PPxScript)
 	}
 	OldInfo.ppxa = (PPxScript->InstanceValue.stay.ppxa != NULL) ?
 					PPxScript->InstanceValue.stay.ppxa : &DummyPPxAppInfo;
-	OldInfo.arg.param = L"";
+	OldInfo.arg.param = ::NilStrW;
 	OldInfo.arg.count = 0;
 	OldInfo.arg.resultstring = NULL;
 	SleepStayInstance(&PPxScript->InstanceValue, &OldInfo);
@@ -368,15 +401,21 @@ void FreeStayInstance(PPXAPPINFOW *ppxa, BOOL terminate)
 	DWORD ThreadID = GetCurrentThreadId();
 	SITECHAIN *chain = &StayChains, *nextchain;
 
+	if ( PPxVersion == 0 ) return; // 常駐未使用
+	EnterCriticalSection(&StayLock);
 	for(;;){
 		nextchain = chain->next;
-		if ( nextchain == NULL ) break;
+		if ( nextchain == NULL ){
+			LeaveCriticalSection(&StayLock);
+			return;
+		}
 
 		PPxScript = nextchain->site;
 		if ( (PPxScript->InstanceValue.stay.threadID == ThreadID) &&
 			 (terminate ||
 			  (PPxScript->InstanceValue.stay.hWnd == ppxa->hWnd)) ){
 			chain->next = nextchain->next; // drop
+			LeaveCriticalSection(&StayLock);
 
 			PPxScript->InstanceValue.ppxa = ppxa;
 			PPxScript->InstanceValue.arg.count = 0;
@@ -390,6 +429,7 @@ void FreeStayInstance(PPXAPPINFOW *ppxa, BOOL terminate)
 			}else{ // 再入しているので、常駐の解除指示を行う
 				PPxScript->InstanceValue.stay.mode = ScriptStay_None;
 			}
+			EnterCriticalSection(&StayLock);
 			chain = &StayChains;
 			continue;
 		}
@@ -449,7 +489,7 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 	}
 	LeaveCriticalSection(&StayLock);
 
-	HRESULT result;
+	HRESULT result = E_FAIL;
 	const WCHAR *param = pxc->param;
 	int paramcount = pxc->paramcount;
 	OldPPxInfoStruct OldInfo;
@@ -459,6 +499,7 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 	PPxScript->InstanceValue.stay.entry++;
 	PPxScript->InstanceValue.ppxa = ppxa;
 	PPxScript->InstanceValue.arg.resultstring = pxc->resultstring;
+	PPxScript->InstanceValue.Base->set_result(NULL); // ScriptLongResultを破棄
 
 	if ( InvokeName[0] == '\0' ){ // メソッド指定が無い
 		if ( (StayMode < ScriptStay_Stay) || (paramcount == 0) || (param[0] == '\0') ){
@@ -481,9 +522,8 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 							PPxScript->InstanceValue.arg.param = param + wcslen(param) + 1; // source をスキップ
 							PPxScript->InstanceValue.arg.count = paramcount - 1;
 						}
-						PPxScript->EvalScript(ScriptImage);
+						result = PPxScript->EvalScript(ScriptImage);
 						delete[] ScriptImage;
-						result = S_OK;
 					}
 				}
 			}else{
@@ -492,8 +532,7 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 					PPxScript->InstanceValue.arg.count = paramcount - 1;
 				}
 				// 例 *js ":123", "script"
-				PPxScript->EvalScript(param);
-				result = S_OK;
+				result = PPxScript->EvalScript(param);
 			}
 		}
 		if ( paramcount > 0 ){
@@ -512,10 +551,14 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 	if ( InvokeName[0] != '\0' ){
 		result = PPxScript->InvokeScript(InvokeName, param, paramcount);
 	}
-	if ( result == DISP_E_UNKNOWNNAME ){
-		::PopupMessagef(ppxa, L"%s() not found", InvokeName);
-	}else if ( FAILED(result) ){
-		::PopupMessagef(ppxa, L"Invoke error %s(), code:%x", InvokeName, result);
+	if ( FAILED(result) ){
+		if ( result == DISP_E_UNKNOWNNAME ){
+			::PopupMessagef(ppxa, L"%s() not found", InvokeName);
+		}else if ( result != SCRIPT_E_REPORTED ){
+			::PopupMessagef(ppxa, L"Invoke error %s(), code: 0x%x", InvokeName, result);
+		}
+	}else{
+		PPxScript->InstanceValue.Base->SetResult();
 	}
 
 	if ( PPxScript->InstanceValue.stay.mode < ScriptStay_Stay ){
@@ -532,14 +575,15 @@ BOOL RunStayScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, int StayMode, WCHA
 
 void CheckOption(PPXMCOMMANDSTRUCT *pxc, int *StayMode, WCHAR *InvokeName)
 {
-	WCHAR buf[256], *dest;
+	WCHAR buf[MAXINVOKENAME], *dest;
 
 	pxc->param++;
 	for (;;){
 		dest = buf;
 		for (;;){
 			if ( *pxc->param == '\0' ) break;
-			*dest++ = *pxc->param++;
+			if ( (dest - buf) < (MAXINVOKENAME - 1) ) *dest++ = *pxc->param;
+			pxc->param++;
 			if ( *pxc->param != ',' ) continue;
 			pxc->param++;
 			break;
@@ -563,7 +607,7 @@ int RunScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_typ
 	CScriptSite *PPxScript;
 	PPXMCOMMANDSTRUCT pxcbuf;
 	int StayMode = ScriptStay_None;
-	WCHAR InvokeName[256];
+	WCHAR InvokeName[MAXINVOKENAME];
 
 	InvokeName[0] = '\0';
 	if ( pxc->paramcount > 0 ){
@@ -608,33 +652,33 @@ int RunScript(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_typ
 			FirstStayInstance(PPxScript);
 			return result;
 		}
-		PPxScript->QuitScript();
 	}
 	PPxScript->InstanceValue.stay.entry--;
+	PPxScript->QuitScript();
 	PPxScript->Release();
 	return result;
 }
 
-STDMETHODIMP LoadTypeInfo(ITypeInfo** pptinfo, REFCLSID clsid, LCID lcid)
+STDMETHODIMP LoadSelfTypeInfo(ITypeInfo** pptinfo, REFCLSID clsid)
 {
 	HRESULT hr;
 	LPTYPELIB ptlib = NULL;
-	LPTYPEINFO ptinfo = NULL;
+
 	*pptinfo = NULL;
-										// 一般のタイプライブラリ
-	hr = ::LoadRegTypeLib(LIBID_PPxScr, 2, 0, lcid, &ptlib);
-	if ( FAILED(hr) ){					// 内蔵のタイプライブラリ
-		hr = ::LoadTypeLib(DLLFileName, &ptlib);
-		if ( FAILED(hr) ) return hr;	// 何処にもなかった
-	}
-	hr = ptlib->GetTypeInfoOfGuid(clsid, &ptinfo);
-	if ( FAILED(hr) ){
+	/*									// 一般のタイプライブラリ
+	hr = ::LoadRegTypeLib(LIBID_PPxScr, 2, 0, 0, &ptlib);
+	if ( SUCCEEDED(hr) ){
+		hr = ptlib->GetTypeInfoOfGuid(clsid, pptinfo);
 		ptlib->Release();
-		return hr;
+		if ( SUCCEEDED(hr) ) return S_OK;   // 失敗したら内蔵へ
 	}
+	*/
+										// 内蔵のタイプライブラリ
+	hr = ::LoadTypeLib(DLLFileName, &ptlib);
+	if ( FAILED(hr) ) return hr;	// 何処にもなかった
+	hr = ptlib->GetTypeInfoOfGuid(clsid, pptinfo);
 	ptlib->Release();
-	*pptinfo = ptinfo;
-	return S_OK;
+	return hr;
 }
 
 // レジストリから文字列を得る -------------------------------------------------
@@ -647,7 +691,7 @@ BOOL GetRegStringW(HKEY hKey, const WCHAR *path, const WCHAR *name, WCHAR *dest,
 	if ( ::OSver.dwPlatformId == VER_PLATFORM_WIN32_NT ){
 		if ( ::RegOpenKeyExW(hKey, path, 0, KEY_READ, &HK) == ERROR_SUCCESS ){
 			s = size;
-			if (::RegQueryValueExW(HK, name, NULL, &t, (LPBYTE)dest, &s)
+			if ( ::RegQueryValueExW(HK, name, NULL, &t, (LPBYTE)dest, &s)
 					== ERROR_SUCCESS){
 				::RegCloseKey(HK);
 				return TRUE;
@@ -660,10 +704,10 @@ BOOL GetRegStringW(HKEY hKey, const WCHAR *path, const WCHAR *name, WCHAR *dest,
 		UnicodeToAnsi(path, in, MAX_PATH);
 		if ( ::RegOpenKeyExA(hKey, in, 0, KEY_READ, &HK) == ERROR_SUCCESS ){
 			UnicodeToAnsi(name, in, MAX_PATH);
-			s = size;
+			s = sizeof(out);
 			if ( ::RegQueryValueExA(HK, in, NULL, &t,
 					(LPBYTE)out, &s) == ERROR_SUCCESS){
-				AnsiToUnicode(out, dest, MAX_PATH);
+				AnsiToUnicode(out, dest, size / sizeof(WCHAR));
 				::RegCloseKey(HK);
 				return TRUE;
 			}
@@ -727,7 +771,7 @@ void Debug_DispIID(const char *mesA, REFIID riid)
 	StringFromIID(riid, &iidstring);
 	tprintfW(path, L"Interface\\%s", iidstring);
 	CoTaskMemFree(iidstring);
-	if ( GetRegStringW(HKEY_CLASSES_ROOT, path, ::NullStr, name, sizeof(name)) ){
+	if ( GetRegStringW(HKEY_CLASSES_ROOT, path, ::NilStrW, name, sizeof(name)) ){
 		Debug_WriteLog(mesA, name);
 	}else{
 		Debug_WriteLog(mesA, path);
@@ -746,14 +790,16 @@ void Debug_InvokeUnknownDispIID(char *classname, DISPID dispIdMember, WORD wFlag
 }
 #endif
 
+// 現在コードページ、又は BOM 付き UTF-8 のテキストを読み込む
 WCHAR *LoadScriptFile(const WCHAR *filename)
 {
 	HANDLE hFile;
-	DWORD sizeL;		// ファイルの大きさ
-	int margin = 32;
-	char *TextImageA;
+	DWORD sizeL, sizeH;
+	#define FILEIMAGEMARGIN 32
+	char *TextImageA;;
 	WCHAR *TextImageW;
 
+	if ( filename == NULL ) return NULL;
 #ifdef _WIN64										// ファイルを開く
 	hFile = ::CreateFileW(filename, GENERIC_READ,
 			FILE_SHARE_WRITE | FILE_SHARE_READ,
@@ -775,28 +821,57 @@ WCHAR *LoadScriptFile(const WCHAR *filename)
 	if ( hFile == INVALID_HANDLE_VALUE ) return NULL;
 
 										// ファイルサイズの確認 ---------------
-	sizeL = ::GetFileSize(hFile, NULL);
+	sizeL = ::GetFileSize(hFile, &sizeH);
+	if ( (sizeL >= 0x80000000) || (sizeH != 0) ){ // 2G over と INVALID_FILE_SIZE はエラー
+		::CloseHandle(hFile);
+		return NULL;
+	}
 										// 読み込み準備 -----------------------
-	TextImageA = new char[sizeL + margin];
+	TextImageA = new char[sizeL + FILEIMAGEMARGIN];
 	if ( TextImageA == NULL ){
 		::CloseHandle(hFile);
 		return NULL;
 	}
 										// 読み込み & 0 padding ---------------
-	if ( FALSE == ::ReadFile(hFile, TextImageA, sizeL, &sizeL, NULL) ){
-		sizeL = 0;
+	DWORD readsize, totalsize = 0;
+	for(;;){
+		if ( ReadFile(hFile, TextImageA + totalsize, sizeL - totalsize, &readsize, NULL) ){
+			totalsize += readsize;
+			if ( sizeL <= totalsize ) break;
+			if ( readsize == 0 ) break;
+		}else{
+			break;
+		}
 	}
 	::CloseHandle(hFile);
-	::memset(TextImageA + sizeL, 0, margin);
+	if ( sizeL > totalsize ){
+		delete[] TextImageA;
+		return NULL;
+	}
+	::memset(TextImageA + totalsize, 0, FILEIMAGEMARGIN);
 
 	if ( memcmp(TextImageA, UTF8HEADER, UTF8HEADERSIZE) == 0 ){ // UTF-8
 		sizeL = ::MultiByteToWideChar(CP_UTF8, 0, TextImageA + UTF8HEADERSIZE, -1, NULL, 0);
-		TextImageW = new WCHAR[sizeL];
-		::MultiByteToWideChar(CP_UTF8, 0, TextImageA + UTF8HEADERSIZE, -1, TextImageW, sizeL);
+		if ( sizeL != 0 ){
+			TextImageW = new WCHAR[sizeL];
+			if ( 0 == ::MultiByteToWideChar(CP_UTF8, 0, TextImageA + UTF8HEADERSIZE, -1, TextImageW, sizeL) ){
+				delete[] TextImageW;
+				TextImageW = NULL;
+			}
+		}else{
+			TextImageW = NULL;
+		}
 	} else{ // ANSI
 		sizeL = ::MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, TextImageA, -1, 0, 0) + 1;
-		TextImageW = new WCHAR[sizeL];
-		::MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, TextImageA, -1, TextImageW, sizeL);
+		if ( sizeL != 0 ){
+			TextImageW = new WCHAR[sizeL];
+			if ( 0 == ::MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, TextImageA, -1, TextImageW, sizeL) ){
+				delete[] TextImageW;
+				TextImageW = NULL;
+			}
+		}else{
+			TextImageW = NULL;
+		}
 	}
 	delete[] TextImageA;
 	return TextImageW;
@@ -826,8 +901,7 @@ int StayInfo(PPXAPPINFOW *ppxa, PPXMCOMMANDSTRUCT *pxc)
 		}
 	}
 
-	if ( StayChains.next == NULL ) return PPXMRESULT_DONE;
-
+	if ( PPxVersion == 0 ) return PPXMRESULT_DONE; // 常駐未使用
 	EnterCriticalSection(&StayLock);
 	for(;;){
 		nextchain = chain->next;

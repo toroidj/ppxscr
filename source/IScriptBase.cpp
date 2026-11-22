@@ -5,7 +5,6 @@
 #define  STRICT
 #define _WIN32_DCOM
 #include <windows.h>
-//#include <comdef.h>
 #include <activscp.h>
 #include "ppxscr.h"
 #pragma hdrstop
@@ -17,8 +16,6 @@
 #include "IScriptBase.h"
 #include "IScriptSite.h"
 
-void FreeEventChainObject(FREECHAIN *firstchain);
-
 #define CLASSNAME CScriptBase
 #define CLASSNAMES "CScriptBase"
 CScriptBase::CScriptBase(InstanceValueStruct *InstanceValue)
@@ -28,15 +25,12 @@ CScriptBase::CScriptBase(InstanceValueStruct *InstanceValue)
 	m_InstanceValue = InstanceValue;
 	ppxa = m_InstanceValue->ppxa;
 
-	m_typeInfo = NULL;
+	m_typeInfo = InstanceValue->BaseTypeInfo; // != NULL 確定
+	m_typeInfo->AddRef();
 	m_theConnection = NULL;
 	m_ScriptLongResult = NULL;
 	m_extract_result = NO_ERROR;
 	m_EventChain.next = NULL;
-
-	if ( FAILED(::LoadTypeInfo(&m_typeInfo, CLSID_PPxObject, 0)) ){
-		::PopupMessage(ppxa, UNICODESTR(CLASSNAMES) UNICODESTR(" load error"));
-	}
 }
 
 //----------------------------------------------------- IUnknown Interfaces
@@ -44,9 +38,9 @@ T_IUNKNOWN_ADDREFDEFINE(CLASSNAME)
 
 STDMETHODIMP_(ULONG) CScriptBase::Release()
 {
-	if (--m_refCount == 0){
-		m_typeInfo->Release();
+	if ( --m_refCount == 0 ){
 		FreeEventChainObject(&m_EventChain);
+		m_typeInfo->Release();
 		delete this;
 		return 0;
 	}
@@ -85,8 +79,8 @@ STDMETHODIMP CScriptBase::QueryInterface(REFIID iid, void **ppv)
 		AddRef();
 		return S_OK;
 	}
-	Debug_DispIID(CLASSNAMES "::QueryInterface - false:", iid); \
-		*ppv = NULL;
+	Debug_DispIID(CLASSNAMES "::QueryInterface - false:", iid);
+	*ppv = NULL;
 	return E_NOINTERFACE;
 }
 /*
@@ -109,7 +103,8 @@ STDMETHODIMP CScriptBase::GetInfoOfIndex(ULONG iti, DWORD dwMCIFlags, ITypeInfo 
 	Debug_WriteLog(CLASSNAMES "::GetInfoOfIndex", NULL);
 	if ( iti != 0 ) return E_INVALIDARG;
 	if ( dwMCIFlags & MULTICLASSINFO_GETTYPEINFO ){
-		GetTypeInfo(0, 0, pptiCoClass);
+		HRESULT hr = GetTypeInfo(0, 0, pptiCoClass);
+		if ( FAILED(hr) ) return hr;
 	}
 	if ( dwMCIFlags & MULTICLASSINFO_GETNUMRESERVEDDISPIDS ){
 		*pdwTIFlags = 0;
@@ -152,7 +147,7 @@ STDMETHODIMP CScriptBase::FindConnectionPoint(REFIID riid, IConnectionPoint **pp
 	Debug_WriteLog(CLASSNAMES "::FindConnectionPoint", NULL);
 	if ( riid == DIID_IPPxEvents ){
 		*ppCP = static_cast<IConnectionPoint*>(this);
-	} else{
+	}else{
 		*ppCP = NULL;
 		return CONNECT_E_NOCONNECTION;
 	}
@@ -168,7 +163,7 @@ STDMETHODIMP CScriptBase::GetConnectionInterface(IID *pIID)
 	Debug_WriteLog(CLASSNAMES "::GetConnectionInterface", NULL);
 	if ( pIID == NULL ){
 		hr = E_POINTER;
-	} else{
+	}else{
 		*pIID = DIID_IPPxEvents;
 	}
 	return hr;
@@ -181,7 +176,7 @@ STDMETHODIMP CScriptBase::GetConnectionPointContainer(IConnectionPointContainer 
 	Debug_WriteLog(CLASSNAMES "::GetConnectionPointContainer", NULL);
 	if ( ppCPC == NULL ){
 		hr = E_POINTER;
-	} else{
+	}else{
 		*ppCPC = static_cast<IConnectionPointContainer*>(this);
 		static_cast<IUnknown*>(*ppCPC)->AddRef();
 	}
@@ -204,12 +199,13 @@ STDMETHODIMP CScriptBase::Advise(IUnknown *pUnk, DWORD *pdwCookie)
 STDMETHODIMP CScriptBase::Unadvise(DWORD dwCookie)
 {
 	Debug_WriteLog(CLASSNAMES "::Unadvise", NULL);
-	if ( dwCookie != 1 ){
+	if ( (dwCookie != 1) || (m_theConnection == NULL) ){
 		return CONNECT_E_NOCONNECTION;
-	} else{
-		if ( m_theConnection->Release() == 0 ) m_theConnection = NULL;
-		return S_OK;
 	}
+
+	m_theConnection->Release();
+	m_theConnection = NULL;
+	return S_OK;
 }
 
 STDMETHODIMP CScriptBase::EnumConnections(IEnumConnections **)
@@ -222,15 +218,20 @@ STDMETHODIMP CScriptBase::EnumConnections(IEnumConnections **)
 STDMETHODIMP CScriptBase::GetTypeInfoCount(UINT *iTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfoCount", NULL);
+	if ( iTInfo == NULL ) return E_NOTIMPL;
 	*iTInfo = 1;
 	return S_OK;
 }
 
-STDMETHODIMP CScriptBase::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
+STDMETHODIMP CScriptBase::GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfo", NULL);
-	m_typeInfo->AddRef();
+	if ( iTInfo != 0 ){
+		*ppTInfo = NULL;
+		return DISP_E_BADINDEX;
+	}
 	*ppTInfo = m_typeInfo;
+	m_typeInfo->AddRef();
 	return S_OK;
 }
 
@@ -238,7 +239,7 @@ STDMETHODIMP CScriptBase::GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT c
 {
 	if ( riid != IID_NULL ){
 		Debug_WriteLog(CLASSNAMES "::GetIDsOfNames-Invalidarg:", *rgszNames);
-		return E_INVALIDARG;
+		return DISP_E_UNKNOWNINTERFACE;
 	}
 #ifndef DEBUG
 	return m_typeInfo->GetIDsOfNames(rgszNames, cNames, rgDispId);
@@ -248,7 +249,7 @@ STDMETHODIMP CScriptBase::GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT c
 	for ( count = 0; count < cNames; count++ ){
 		if ( FAILED(hr) ){
 			Debug_WriteLog(CLASSNAMES "::GetIDsOfNames-Failed:", rgszNames[count]);
-		} else{
+		}else{
 			Debug_WriteLog(CLASSNAMES "::GetIDsOfNames-Succesed:", rgszNames[count]);
 		}
 	}
@@ -264,44 +265,19 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 	Debug_WriteLog(CLASSNAMES "::Invoke", NULL);
 	if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
 
-#if 0
-	if ( wFlags & DISPATCH_METHOD ){
+#if 0 // type library で invoke を行う場合の例
+	if ( wFlags & DISPATCH_METHOD ){ // DISPID_EXECUTE と DISPID_ECHO は自前
 		if ( dispIdMember == DISPID_EXECUTE ){
-
-			ArgsCheck(1);
-			FixArgType(0, VT_BSTR);
-			if ( pVarResult == NULL ){
-				return Execute(pDispParams->rgvarg[0].bstrVal, NULL);
-			} else{
-				pVarResult->vt = VT_I4;
-				return Execute(pDispParams->rgvarg[0].bstrVal, &pVarResult->lVal);
-			}
+			:
+			:
+			:
 		}
 		if ( dispIdMember == DISPID_ECHO ){
-			if ( (pDispParams->cArgs == 1) &&
-				(pDispParams->rgvarg[0].vt == VT_SAFEARRAY) ){
-				return Echo(pDispParams->rgvarg[0].parray);
-			} else{
-				SAFEARRAY *pArray;
-				VARIANTARG **EchoArgs = NULL;
-				unsigned int iArgs;
-
-				pArray = ::SafeArrayCreateVector(
-						VT_VARIANT, 0, pDispParams->cArgs);
-				::SafeArrayAccessData(
-						pArray, reinterpret_cast<void**>(&EchoArgs));
-				for ( iArgs = 0; iArgs < pDispParams->cArgs; iArgs++ ){
-					EchoArgs[iArgs] = &pDispParams->
-						rgvarg[pDispParams->cArgs - iArgs - 1];
-				}
-				::SafeArrayUnaccessData(pArray);
-				hr = Echo(pArray);
-				::SafeArrayDestroy(pArray);
-				return hr;
-			}
+			:
+			:
+			:
 		}
 	}
-
 	return m_typeInfo->Invoke(static_cast<IDispatch*>(this),
 			dispIdMember, wFlags, pDispParams, pVarResult, ei, puArgErr);
 #else
@@ -314,7 +290,7 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 				FixArgType(0, VT_BSTR);
 				if ( pVarResult == NULL ){
 					return Execute(pDispParams->rgvarg[0].bstrVal, NULL);
-				} else{
+				}else{
 					pVarResult->vt = VT_I4;
 					return Execute(pDispParams->rgvarg[0].bstrVal, &pVarResult->lVal);
 				}
@@ -353,32 +329,39 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 
 			case DISPID_ECHO:
 				if ( (pDispParams->cArgs == 1) &&
-					(pDispParams->rgvarg[0].vt == VT_SAFEARRAY) ){
+					 (pDispParams->rgvarg[0].vt == (VT_ARRAY | VT_VARIANT)) ){
+					// Echo() が使用可能
 					return Echo(pDispParams->rgvarg[0].parray);
-				} else{
-					SAFEARRAY *pArray;
-					VARIANTARG **EchoArgs = NULL;
-					unsigned int iArgs;
+				}else{
+					unsigned int iArgs, magargs;
+					WCHAR *msg;
+					size_t msgmax = CMDLINESIZE;
+					size_t msgoffset = 0;
 
-					pArray = ::SafeArrayCreateVector(
-							VT_VARIANT, 0, pDispParams->cArgs);
-					::SafeArrayAccessData(
-							pArray, reinterpret_cast<void**>(&EchoArgs));
-					for ( iArgs = 0; iArgs < pDispParams->cArgs; iArgs++ ){
-						EchoArgs[iArgs] = &pDispParams->
-							rgvarg[pDispParams->cArgs - iArgs - 1];
+					msg = (WCHAR *)HeapAlloc(GetProcessHeap(), 0, msgmax * sizeof(WCHAR));
+					if ( msg == NULL ) return E_OUTOFMEMORY;
+
+					magargs = pDispParams->cArgs;
+					hr = S_OK;
+					for ( iArgs = 0; iArgs < magargs; iArgs++ ){
+						if ( FAILED(hr = CatVariantStrings(&msg, &msgoffset, &msgmax, &pDispParams->rgvarg[magargs - iArgs - 1])) ){
+							break;
+						}
+						// 項目間の空白。CatVariantStrings でメモリ確保済み
+						if ( (iArgs + 1) < magargs ) msg[msgoffset++] = L' ';
 					}
-					::SafeArrayUnaccessData(pArray);
-					hr = Echo(pArray);
-					::SafeArrayDestroy(pArray);
+					msg[msgoffset] = L'\0';
+
+					::PopupMessage(ppxa, msg);
+					HeapFree(GetProcessHeap(), 0, msg);
 					return hr;
 				}
 
 			case DISPID_QUIT:
 				if ( pDispParams->cArgs == 1 ){
-					FixArgType(0, VT_I2);
-					return Quit(pDispParams->rgvarg[0].iVal);
-				} else if ( pDispParams->cArgs == 0 ){
+					FixArgType(0, VT_I4);
+					return Quit(pDispParams->rgvarg[0].lVal);
+				}else if ( pDispParams->cArgs == 0 ){
 					return Quit(PPXMRESULT_DONE);
 				}
 				return DISP_E_BADPARAMCOUNT;
@@ -421,19 +404,21 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 			case 51:
 				ArgsCheck(1);
 				FixArgType(0, VT_DISPATCH);
-				pVarResult->vt = VT_DISPATCH;
-				return Enumerator(pDispParams->rgvarg[0].pdispVal, &pVarResult->pdispVal);
+				if ( pVarResult == NULL ) return E_INVALIDARG;
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, Enumerator(pDispParams->rgvarg[0].pdispVal, &pVarResult->pdispVal));
 
 			case 53:
 				ArgsCheck(1);
-				pVarResult->vt = VT_BSTR;
+				if ( pVarResult == NULL ) return E_INVALIDARG;
 				FixArgType(0, VT_BSTR);
+				pVarResult->vt = VT_BSTR;
 				return option(pDispParams->rgvarg[0].bstrVal, *pVarResult, pVarResult);
 
 			case 54:
 				ArgsCheck(1);
-				pVarResult->vt = VT_I4;
+				if ( pVarResult == NULL ) return E_INVALIDARG;
 				FixArgType(0, VT_I4);
+				pVarResult->vt = VT_I4;
 				return LoadCount(pDispParams->rgvarg[0].lVal, &pVarResult->lVal);
 		}
 	}
@@ -450,31 +435,34 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 		// Debug_WriteLog(NULL, UNICODESTR(CLASSNAMES) L"::Invoke Get/Method %d", dispIdMember);
 		switch ( dispIdMember ){
 			case 32:
-				pVarResult->vt = VT_I4;
 				if ( pDispParams->cArgs == 0 ){
+				pVarResult->vt = VT_I4;
 					return GetComboItemCount(1, &pVarResult->lVal);
 				}
 				ArgsCheck(1);
 				FixArgType(0, VT_I4);
+				pVarResult->vt = VT_I4;
 				return GetComboItemCount(pDispParams->rgvarg[0].lVal, &pVarResult->lVal);
 
 			case DISPID_EXTRACT:
-				pVarResult->vt = VT_BSTR;
 				if ( pDispParams->cArgs == 0 ){
+				pVarResult->vt = VT_BSTR;
 					return Extract(NULL, &pVarResult->bstrVal);
 				}
 				ArgsCheck(1);
 				FixArgType(0, VT_BSTR);
+				pVarResult->vt = VT_BSTR;
 				return Extract(pDispParams->rgvarg[0].bstrVal, &pVarResult->bstrVal);
 
 			case 20: // GetFileInformation
-				pVarResult->vt = VT_BSTR;
 				if ( pDispParams->cArgs == 1 ){
 					FixArgType(0, VT_BSTR);
+					pVarResult->vt = VT_BSTR;
 					return GetFileInformation(pDispParams->rgvarg[0].bstrVal, 0, &pVarResult->bstrVal);
-				} else if ( pDispParams->cArgs == 2 ){
+				}else if ( pDispParams->cArgs == 2 ){
 					FixArgType(0, VT_I4);
 					FixArgType(1, VT_BSTR);
+					pVarResult->vt = VT_BSTR;
 					return GetFileInformation(pDispParams->rgvarg[1].bstrVal, pDispParams->rgvarg[0].lVal, &pVarResult->bstrVal);
 				}
 				return DISP_E_BADPARAMCOUNT;
@@ -501,37 +489,30 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 
 			case DISPID_CREATEOBJECT:
 				if ( pDispParams->cArgs == 1 ){
-					pVarResult->vt = VT_DISPATCH;
 					FixArgType(0, VT_BSTR);
 					hr = CreateObject(pDispParams->rgvarg[0].bstrVal,
 						NULL, &pVarResult->pdispVal);
-					if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				} else if ( pDispParams->cArgs == 2 ){
-					pVarResult->vt = VT_DISPATCH;
+				}else if ( pDispParams->cArgs == 2 ){
 					FixArgType(0, VT_BSTR);
 					FixArgType(1, VT_BSTR);
 					hr = CreateObject(pDispParams->rgvarg[1].bstrVal,
 						pDispParams->rgvarg[0].bstrVal, &pVarResult->pdispVal);
-					if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				} else{
+				}else{
 					hr = DISP_E_BADPARAMCOUNT;
 				}
-				return hr;
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, hr);
 
 			case DISPID_GETOBJECT:
-				pVarResult->vt = VT_DISPATCH;
 				if ( pDispParams->cArgs == 1 ){
 					FixArgType(0, VT_BSTR);
 					hr = GetObject(pDispParams->rgvarg[0].bstrVal,
 						0, 0, &pVarResult->pdispVal);
-					if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				} else if ( pDispParams->cArgs == 2 ){
+				}else if ( pDispParams->cArgs == 2 ){
 					FixArgType(0, VT_BSTR);
 					FixArgType(1, VT_BSTR);
 					hr = GetObject(pDispParams->rgvarg[1].bstrVal,
 						pDispParams->rgvarg[0].bstrVal, 0, &pVarResult->pdispVal);
-					if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				} else if ( pDispParams->cArgs == 3 ){
+				}else if ( pDispParams->cArgs == 3 ){
 					FixArgType(0, VT_BSTR);
 					FixArgType(1, VT_BSTR);
 					FixArgType(2, VT_BSTR);
@@ -539,11 +520,10 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 						pDispParams->rgvarg[1].bstrVal,
 						pDispParams->rgvarg[0].bstrVal,
 						&pVarResult->pdispVal);
-					if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				} else{
+				}else{
 					hr = DISP_E_BADPARAMCOUNT;
 				}
-				return hr;
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, hr);
 									// Properties(Get) ------------------------
 			case 100:
 				pVarResult->vt = VT_BSTR;
@@ -638,7 +618,6 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 				pVarResult->vt = VT_I4;
 				return get_EntryExtColor(&pVarResult->lVal);
 
-
 			case 21:
 				pVarResult->vt = VT_BSTR;
 				return get_DriveVolumeLabel(&pVarResult->bstrVal);
@@ -665,25 +644,33 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 				return get_DriveFreeSize(&pVarResult->dblVal);
 
 			case 16:
-				if ( pDispParams->cArgs == 1 ){
+				if ( pDispParams->cArgs == 1 ){ // arg = PPx.Arguments(n)
+					IArguments *argp;
+
 					Debug_WriteLog(CLASSNAMES "::Invoke-get_Arguments(n)", NULL);
-					hr = get_Arguments(reinterpret_cast<IArguments**>(&pVarResult->pdispVal));
-					if ( FAILED(hr) ) return hr;
 					FixArgType(0, VT_I4);
-					pVarResult->vt = VT_BSTR;
-					return (reinterpret_cast<IArguments*>(pVarResult->pdispVal))->Item(pDispParams->rgvarg[0].lVal, &pVarResult->bstrVal);
-				} else{
-					ArgsCheck(0);
-					pVarResult->vt = VT_DISPATCH;
-					return get_Arguments(reinterpret_cast<IArguments**>(&pVarResult->pdispVal));
+					hr = get_Arguments(&argp);
+					if ( FAILED(hr) ){
+						pVarResult->vt = VT_EMPTY;
+						return hr;
+					}
+					hr = argp->Item(pDispParams->rgvarg[0].lVal, &pVarResult->bstrVal);
+					argp->Release();
+					pVarResult->vt = SUCCEEDED(hr) ? VT_BSTR : VT_EMPTY;
+					return hr;
 				}
+				// arg = PPx.Arguments()
+					ArgsCheck(0);
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult,
+						get_Arguments(reinterpret_cast<IArguments**>(&pVarResult->pdispVal)));
 
 			case 43: // Argument
-				pVarResult->vt = VT_BSTR;
 				if ( pDispParams->cArgs == 1 ){
 					FixArgType(0, VT_I4);
+					pVarResult->vt = VT_BSTR;
 					return Argument(pDispParams->rgvarg[0].lVal, &pVarResult->bstrVal);
 				}else if ( pDispParams->cArgs == 0 ){
+					pVarResult->vt = VT_BSTR;
 					return Argument(0, &pVarResult->bstrVal);
 				}
 				pVarResult->vt = VT_EMPTY;
@@ -692,8 +679,10 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 			case 18:
 				Debug_WriteLog(CLASSNAMES "::Invoke-get_Entry(n)", NULL);
 				if ( pDispParams->cArgs > 1 ) return DISP_E_BADPARAMCOUNT;
+				if ( pDispParams->cArgs == 1 ){
+					FixArgType(0, VT_I4);
+				}
 
-				pVarResult->vt = VT_DISPATCH;
 				hr = get_Entry(reinterpret_cast<IEntry**>(&pVarResult->pdispVal));
 				if ( FAILED(hr) ){
 					pVarResult->vt = VT_EMPTY;
@@ -701,17 +690,20 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 				}
 
 				if ( pDispParams->cArgs == 1 ){
-					FixArgType(0, VT_I4);
+					pVarResult->vt = VT_DISPATCH;
 					return reinterpret_cast<CEntry*>(pVarResult->pdispVal)->set_index(pDispParams->rgvarg[0].lVal);
-				} else{ // 0
+				}else{ // 0
+					pVarResult->vt = VT_DISPATCH;
 					(reinterpret_cast<CEntry*>(pVarResult->pdispVal))->ResetIndex();
 					return S_OK;
 				}
 
 			case 29:
 				if ( pDispParams->cArgs > 1 ) return DISP_E_BADPARAMCOUNT;
+				if ( pDispParams->cArgs == 1 ){
+					FixArgType(0, VT_I4);
+				}
 
-				pVarResult->vt = VT_DISPATCH;
 				hr = get_Pane(reinterpret_cast<IPane**>(&pVarResult->pdispVal));
 				if ( FAILED(hr) ){
 					pVarResult->vt = VT_EMPTY;
@@ -719,9 +711,10 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 				}
 
 				if ( pDispParams->cArgs == 1 ){
-					FixArgType(0, VT_I4);
+					pVarResult->vt = VT_DISPATCH;
 					return reinterpret_cast<CPane*>(pVarResult->pdispVal)->set_index(pDispParams->rgvarg[0].lVal);
-				} else{ // 0
+				}else{ // 0
+					pVarResult->vt = VT_DISPATCH;
 					return S_OK;
 				}
 
@@ -743,9 +736,8 @@ STDMETHODIMP CScriptBase::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD
 					FixArgType(0, VT_I4);
 					pVarResult->vt = VT_I4;
 					return Cursor(pDispParams->rgvarg[0].lVal,
-						(long)-2,
-						&pVarResult->lVal);
-				} else{
+						(long)-2, &pVarResult->lVal);
+				}else{
 					FixArgType(0, VT_I4);
 					FixArgType(1, VT_I4);
 					pVarResult->vt = VT_I4;
@@ -867,7 +859,7 @@ private:
 	int m_LogFire;
 
 public:
-	CEventSink(DISPATCHSTRUCT *disps, IActiveScript *Engine, BSTR prefix);
+	CEventSink(DISPATCHSTRUCT *disps, IActiveScript *Engine, BSTR prefix, FREECHAIN *EventChain);
 	virtual ~CEventSink();
 //----------------------------------------------------- IUnknown
 	STDMETHODIMP_(ULONG) AddRef();
@@ -879,11 +871,12 @@ public:
 	STDMETHODIMP GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID, DISPID *rgDispId);
 	STDMETHODIMP Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO * ei, UINT *puArgErr);
 //-------------------------------------------------- init
-	void Connect(IConnectionPoint *pPoint);
+	HRESULT Connect(IConnectionPoint *pPoint);
 	void Disconnect();
 	void SetEventInfo(ITypeInfo *pEventType);
 	void SetEventTrace(int trace);
 	DISPATCHSTRUCT *m_disps;
+	FREECHAIN *m_EventChain;
 };
 
 struct DISPATCHSTRUCT {
@@ -893,15 +886,16 @@ struct DISPATCHSTRUCT {
 	PPXAPPINFOW *ppxa;
 };
 
-CEventSink::CEventSink(DISPATCHSTRUCT *disps, IActiveScript *Engine, BSTR prefix)
+CEventSink::CEventSink(DISPATCHSTRUCT *disps, IActiveScript *Engine, BSTR prefix, FREECHAIN *EventChain)
 {
 	m_refCount = 1; // addref 1回分
 	m_disps = disps;
 	m_Engine = Engine;
 	m_ConnectPoint = NULL;
 	m_EventType = NULL;
-	wcscpy(m_prefix, prefix);
+	stplimcpyW(m_prefix, prefix, DISPNAME_MAXLEN); // prefix は常に非 null
 	m_LogFire = FALSE;
+	m_EventChain = EventChain;
 }
 
 CEventSink::~CEventSink()
@@ -938,19 +932,21 @@ STDMETHODIMP CEventSink::QueryInterface(REFIID riid, void **ppvObj)
 //-------------------------------------------------- IDispatch
 STDMETHODIMP CEventSink::GetTypeInfoCount(UINT *iTInfo)
 {
+	if ( iTInfo == NULL ) return E_NOTIMPL;
 	*iTInfo = 0;
 	return S_OK;
 }
 
-STDMETHODIMP CEventSink::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
+STDMETHODIMP CEventSink::GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 {
 	*ppTInfo = NULL;
-	return DISP_E_BADINDEX;
+	if ( iTInfo != 0 ) return DISP_E_BADINDEX;
+	return E_FAIL;
 }
 
-STDMETHODIMP CEventSink::GetIDsOfNames(REFIID /*riid*/, OLECHAR ** /*rgszNames*/, UINT /*cNames*/, LCID, DISPID * /*rgDispId*/)
+STDMETHODIMP CEventSink::GetIDsOfNames(REFIID, OLECHAR **, UINT , LCID, DISPID *)
 {
-	return E_NOTIMPL;
+	return DISP_E_UNKNOWNINTERFACE;
 }
 
 STDMETHODIMP CEventSink::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO * ei, UINT *puArgErr)
@@ -970,6 +966,10 @@ STDMETHODIMP CEventSink::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD 
 	if ( (eventname == NULL) || (eventname[0] == '\0') ){
 		wsprintf(funcname, L"%s%d", m_prefix, (int)dispIdMember);
 	}else{
+		if ( ::SysStringLen(eventname) >= DISPNAME_MAXLEN ){
+			::SysFreeString(eventname);
+			return E_OUTOFMEMORY;
+		}
 		wsprintf(funcname, L"%s%s", m_prefix, eventname);
 	}
 	::SysFreeString(eventname);
@@ -989,17 +989,25 @@ STDMETHODIMP CEventSink::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD 
 	return result;
 }
 
-void CEventSink::Connect(IConnectionPoint *pPoint)
+HRESULT CEventSink::Connect(IConnectionPoint *pPoint)
 {
-	pPoint->Advise(reinterpret_cast<IUnknown *>(this), &m_ConnectID);
+	HRESULT hr;
+
+	if ( SUCCEEDED(hr = pPoint->Advise(reinterpret_cast<IUnknown *>(this), &m_ConnectID)) ){
 	m_ConnectPoint = pPoint;
+	}else{
+		m_ConnectID = 0;
+		m_ConnectPoint = NULL;
+		pPoint->Release();
+	}
+	return hr;
 }
 
 void CEventSink::Disconnect()
 {
 	FREECHAIN *chain, *nextchain;
 
-	chain = &m_disps->chain;
+	chain = m_EventChain;
 	for(;;){
 		nextchain = chain->next;
 		if ( nextchain == NULL ) break;
@@ -1034,19 +1042,6 @@ void CEventSink::SetEventInfo(ITypeInfo *pEventType)
 void CEventSink::SetEventTrace(int trace)
 {
 	m_LogFire = trace;
-}
-
-void FreeEventChainObject(FREECHAIN *firstchain)
-{
-	FREECHAIN *chain;
-
-	for(;;){
-		DISPATCHSTRUCT *disps;
-		chain = firstchain->next;
-		if ( chain == NULL ) break;
-		disps = reinterpret_cast<DISPATCHSTRUCT *>(chain->value);
-		if ( disps != NULL ) disps->pEventSink->Disconnect();
-	}
 }
 
 // 列挙用 ITypeInfo とその TYPEATTR を取得
@@ -1119,7 +1114,7 @@ IConnectionPoint *GetEventID(IDispatch *pDisp, IID &eventID)
 		}
 		pProvider->Release();
 	}else if ( SUCCEEDED(pContainer->EnumConnectionPoints(&pEnumPoints)) ){
-		if ( SUCCEEDED(pEnumPoints->Next(1, &pPoint, 0)) ){
+		if ( SUCCEEDED(pEnumPoints->Next(1, &pPoint, 0)) && (pPoint != NULL) ){
 			if( FAILED(pPoint->GetConnectionInterface(&eventID)) ){
 				pPoint->Release();
 				pPoint = NULL;
@@ -1131,10 +1126,77 @@ IConnectionPoint *GetEventID(IDispatch *pDisp, IID &eventID)
 	return pPoint;
 }
 
-void CScriptBase::SinkDispatch(IDispatch *pDisp, BSTR prefix)
+void CScriptBase::FreeEventChainObject(FREECHAIN *firstchain)
+{
+	FREECHAIN *chain;
+
+	for(;;){
+		DISPATCHSTRUCT *disps;
+
+		chain = firstchain->next;
+		if ( chain == NULL ) break;
+		disps = reinterpret_cast<DISPATCHSTRUCT *>(chain->value);
+		if ( disps != NULL ) disps->pEventSink->Disconnect();
+	}
+}
+
+HRESULT CScriptBase::CatVariantStrings(WCHAR **strptr, size_t *strtail, size_t *strbuflen, VARIANT *arg)
+{
+	VARIANTARG tmparg;
+	UINT len;
+
+	tmparg.vt = VT_EMPTY;
+	if ( arg->vt == VT_BSTR ){
+		len = ::SysStringLen(arg->bstrVal);
+	}else{
+		HRESULT hr;
+
+		VariantInit(&tmparg);
+		if ( arg->vt == VT_NULL ){
+			tmparg.bstrVal = L"(null)"; // VT_EMPTY のままなので、Clearされない
+			len = 6;
+		}else if ( FAILED(hr = VariantChangeType(&tmparg, arg, 0, VT_BSTR)) ){
+			return hr;
+		}else{
+			len = ::SysStringLen(tmparg.bstrVal);
+		}
+		arg = &tmparg;
+	}
+
+	if ( (*strtail + len + 8) >= *strbuflen ){ // 連結用の空白を含めた空き確認
+		size_t newbuflen;
+		WCHAR *newstr;
+
+		newbuflen = *strbuflen + len + 8;
+		newstr = (WCHAR *)HeapReAlloc(GetProcessHeap(), 0, *strptr, newbuflen * sizeof(WCHAR));
+		if ( newstr == NULL ){
+			if ( tmparg.vt != VT_EMPTY ) VariantClear(&tmparg);
+			return E_OUTOFMEMORY;
+		}
+		*strptr = newstr;
+		*strbuflen = newbuflen;
+	}
+
+	if ( len > 0 ){
+		memcpy(*strptr + *strtail, arg->bstrVal, len * sizeof(WCHAR) + sizeof(WCHAR));
+		*strtail += len;
+	}
+	if ( tmparg.vt != VT_EMPTY ) VariantClear(&tmparg);
+	return S_OK;
+}
+
+HRESULT  CScriptBase::SinkDispatch(IDispatch *pDisp, BSTR prefix, BOOL connect)
 {
 	IID eventID;
+	HRESULT hr;
+
+	if ( (prefix == NULL) || (prefix[0] == '\0') ){ // prefix がないとき
+		return connect ? E_INVALIDARG : S_OK;
+	}
+	if ( pDisp == NULL ) return E_INVALIDARG;
+
 	DISPATCHSTRUCT *disps = new DISPATCHSTRUCT;
+	if ( disps == NULL ) return E_OUTOFMEMORY;
 
 	disps->pDisp = pDisp;
 	disps->pEventSink = NULL;
@@ -1144,43 +1206,57 @@ void CScriptBase::SinkDispatch(IDispatch *pDisp, BSTR prefix)
 
 	IConnectionPoint *pPoint = GetEventID(disps->pDisp, eventID);
 	if ( pPoint != NULL ){
-		#ifndef RELESE
-		//	CountEvent++;
-		#endif
-		disps->pEventSink = new CEventSink(disps, m_InstanceValue->Engine, prefix);
-		disps->pEventSink->Connect(pPoint); // pPoint の生存管理は、CEventSink で行う
+		disps->pEventSink = new CEventSink(disps, m_InstanceValue->Engine, prefix, &m_EventChain);
+		if ( disps->pEventSink == NULL ){
+			pPoint->Release();
+			delete disps;
+			return E_OUTOFMEMORY;
+		}
+
+		if ( FAILED(hr = disps->pEventSink->Connect(pPoint)) ){ // pPoint の生存管理は、CEventSink で行う
+			disps->pEventSink->Release();
+			// delete disps; // disps->pEventSink->Release で実行済み
+			return hr;
+		}
 		disps->chain.value = reinterpret_cast<void *>(disps);
 		disps->chain.next = m_EventChain.next;
 		m_EventChain.next = &disps->chain;
+	}else{
+		delete disps;
+		return connect ? CONNECT_E_NOCONNECTION : S_OK;
 	}
 
 	ITypeInfo *pType;
 	ITypeInfo *pEventType = NULL;
 	TYPEATTR *attr;
 
-	if ( GetTypeInfoAttr(pDisp, &pType, &attr,
-			&pEventType, (disps->pEventSink == NULL) ? NULL : &eventID) ){
-
+	if ( GetTypeInfoAttr(pDisp, &pType, &attr, &pEventType, &eventID) ){
 		if ( pEventType != NULL ){
 			disps->pEventSink->SetEventInfo(pEventType);
 		}
-
 		pType->ReleaseTypeAttr(attr);
 		pType->Release();
 	}
+	return S_OK;
 }
 
 STDMETHODIMP CScriptBase::Include(BSTR filename)
 {
-	m_InstanceValue->Engine->SetScriptState(SCRIPTSTATE_INITIALIZED);
 	WCHAR *script, *IncludeNames;
 	HRESULT hr;
 
 	script = LoadScriptFile(filename);
-	if ( script == NULL ) return DISP_E_EXCEPTION;
+	if ( script == NULL ) return E_ACCESSDENIED;
+
+	// 各 SetScriptState の結果は意図して無視中。
+	m_InstanceValue->Engine->SetScriptState(SCRIPTSTATE_INITIALIZED);
 
 	int srclen = (m_InstanceValue->IncludeNames == NULL) ? 0 : wcslen(m_InstanceValue->IncludeNames);
 	IncludeNames = new WCHAR[wcslen(filename) + srclen + 4];
+	if ( IncludeNames == NULL ){
+		delete[] script;
+		return E_OUTOFMEMORY;
+	}
 	if ( srclen ){
 		wcscpy(IncludeNames, m_InstanceValue->IncludeNames);
 		IncludeNames[srclen++] = '\1';
@@ -1203,15 +1279,19 @@ STDMETHODIMP CScriptBase::CreateObject(BSTR bstrProgId, BSTR bstrPrefix, IDispat
 	CLSID clsidObject;
 	HRESULT hr;
 
+	if ( bstrProgId == NULL ) return E_INVALIDARG;
 	if ( FAILED(hr = ::CLSIDFromProgID(bstrProgId, &clsidObject)) ){
+		*ppObject = NULL;
 		return hr;
 	}
 	if ( FAILED(hr = ::CoCreateInstance(clsidObject, 0,
 		CLSCTX_ALL, IID_IDispatch, reinterpret_cast<void**>(ppObject))) ){
+		*ppObject = NULL;
 		return hr;
 	}
-	if ( bstrPrefix != NULL ){
-		SinkDispatch(*ppObject, bstrPrefix);
+	if ( FAILED(hr = SinkDispatch(*ppObject, bstrPrefix, FALSE)) ){
+		(*ppObject)->Release();
+		*ppObject = NULL;
 	}
 	return hr;
 }
@@ -1220,14 +1300,15 @@ STDMETHODIMP CScriptBase::GetObject(BSTR bstrPathName, BSTR bstrProgId, BSTR bst
 {
 	HRESULT hr;
 
-	if ( bstrProgId == 0 ){
+	if ( bstrPathName == NULL ) return E_INVALIDARG;
+	if ( (bstrProgId == NULL) || (bstrProgId[0] == '\0') ){
 		if ( FAILED(hr = ::CoGetObject(bstrPathName, 0, IID_IDispatch, reinterpret_cast<void**>(ppObject))) ){
 			*ppObject = NULL;
 			return hr;
 		}
-	} else{	// GetInstanceFromFile を使う
+	}else{	// GetInstanceFromFile を使う
 		CLSID clsidObject;
-		MULTI_QI mq = { &IID_IDispatch, 0, 0 };
+		MULTI_QI mq = { &IID_IDispatch, NULL, 0 };
 
 		if ( FAILED(hr = ::CLSIDFromProgID(bstrProgId, &clsidObject)) ){
 			*ppObject = NULL;
@@ -1238,15 +1319,23 @@ STDMETHODIMP CScriptBase::GetObject(BSTR bstrPathName, BSTR bstrProgId, BSTR bst
 			*ppObject = NULL;
 			return hr;
 		}
-		if ( FAILED(hr = mq.pItf->QueryInterface(IID_IDispatch,
-				reinterpret_cast<void**>(ppObject))) ){
-			mq.pItf->Release();
+
+		if ( FAILED(mq.hr) || (mq.pItf == NULL) ){
+			*ppObject = NULL;
+			return FAILED(mq.hr) ? mq.hr : E_NOINTERFACE;
+		}
+
+		hr = mq.pItf->QueryInterface(IID_IDispatch,
+				reinterpret_cast<void**>(ppObject));
+		mq.pItf->Release();
+		if ( FAILED(hr) ){
 			*ppObject = NULL;
 			return hr;
 		}
 	}
-	if ( bstrPrefix != NULL ){
-		SinkDispatch(*ppObject, bstrPrefix);
+	if ( FAILED(hr = SinkDispatch(*ppObject, bstrPrefix, FALSE)) ){
+		(*ppObject)->Release();
+		*ppObject = NULL;
 	}
 	return hr;
 }
@@ -1267,6 +1356,7 @@ CEventSink *FindCEventSink(FREECHAIN *chain, IDispatch *pObject)
 
 STDMETHODIMP CScriptBase::ConnectObject(IDispatch *pObject, BSTR bstrPrefix)
 {
+	if ( bstrPrefix == NULL ) return E_INVALIDARG;
 	if ( bstrPrefix[0] == '@' ){
 		CEventSink *pSink = FindCEventSink(&m_EventChain, pObject);
 		if ( pSink != NULL ){
@@ -1277,8 +1367,7 @@ STDMETHODIMP CScriptBase::ConnectObject(IDispatch *pObject, BSTR bstrPrefix)
 		}
 		return E_FAIL;
 	}
-	SinkDispatch(pObject, bstrPrefix);
-	return S_OK;
+	return SinkDispatch(pObject, bstrPrefix, TRUE);
 }
 
 STDMETHODIMP CScriptBase::DisconnectObject(IDispatch *pObject)
@@ -1304,9 +1393,16 @@ STDMETHODIMP CScriptBase::get_ScriptName(BSTR *Value)
 	return S_OK;
 }
 
-STDMETHODIMP CScriptBase::get_Arguments(IArguments ** Value)
+STDMETHODIMP CScriptBase::get_Arguments(IArguments **Value)
 {
-	*Value = new CArguments(&(m_InstanceValue->ppxa), m_InstanceValue->arg.param, m_InstanceValue->arg.count);
+	if ( m_InstanceValue->ArgumentsTypeInfo == NULL ){
+		HRESULT hr;
+
+		if ( FAILED(hr = ::LoadSelfTypeInfo(&m_InstanceValue->ArgumentsTypeInfo, CLSID_IArguments_Class)) ){
+			return hr;
+		}
+	}
+	*Value = new CArguments(&(m_InstanceValue->ppxa), m_InstanceValue->ArgumentsTypeInfo, m_InstanceValue->arg.param, m_InstanceValue->arg.count);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;
 	(*Value)->AddRef();
 	return S_OK;
@@ -1319,49 +1415,49 @@ STDMETHODIMP CScriptBase::Argument(long itemindex, BSTR *Value)
 
 STDMETHODIMP CScriptBase::Echo(SAFEARRAY *parr)
 {
-	long maxindex;
-	VARIANT **args;
-	BSTR bs;
-	int index;
+	long maxindex, minindex;
+	VARIANT *args;
 	WCHAR *msg;
 	size_t msgmax = CMDLINESIZE;
-	size_t msgoffset = 0;
+	HRESULT hr;
 
 	if ( parr == NULL ){
-		msg = (WCHAR *)HeapAlloc(GetProcessHeap(), 0, 8 * sizeof(WCHAR));
-		wcscpy(msg, L"(null)");
-	}else{
-		::SafeArrayGetUBound(parr, 1, &maxindex);
-		::SafeArrayAccessData(parr, reinterpret_cast<void**>(&args));
+		::PopupMessage(ppxa, L"(null)");
+		return S_OK;
+	}
+
+	hr = ::SafeArrayAccessData(parr, reinterpret_cast<void**>(&args));
+	if ( FAILED(hr) ) return hr;
+	if ( !(parr->fFeatures & FADF_VARIANT) ||
+		 (parr->cDims != 1) ||
+		 FAILED(::SafeArrayGetLBound(parr, 1, &minindex)) ||
+		 FAILED(::SafeArrayGetUBound(parr, 1, &maxindex)) ){
+		::SafeArrayUnaccessData(parr);
+		return E_INVALIDARG;
+	}
+	maxindex -= minindex;
 
 		msg = (WCHAR *)HeapAlloc(GetProcessHeap(), 0, msgmax * sizeof(WCHAR));
+	if ( msg != NULL ){
+		int index;
+		size_t msgoffset = 0;
 
 		for ( index = 0; index <= maxindex; index++ ){
-			UINT len;
-			if ( args[index]->vt != VT_BSTR ){
-				if ( FAILED(VariantChangeType(args[index], args[index], 0, VT_BSTR)) ){
+			if ( FAILED(hr = CatVariantStrings(&msg, &msgoffset, &msgmax, &args[index])) ){
 					break;
 				}
-			}
-			bs = args[index]->bstrVal;
-			if ( bs == NULL ) continue;
-			len = SysStringLen(bs);
-			if ( len > 0 ){
-				if ( (msgoffset + len + 8) >= msgmax ){
-					msgmax = msgoffset + len + 8;
-					msg = (WCHAR *)HeapReAlloc(GetProcessHeap(), 0, msg, msgmax * sizeof(WCHAR));
-				}
-				memcpy(msg + msgoffset, bs, len * sizeof(WCHAR));
-				msgoffset += len;
+			// 項目間の空白。CatVariantStrings でメモリ確保済み
 				if ( index < maxindex ) msg[msgoffset++] = L' ';
 			}
-		}
 		msg[msgoffset] = L'\0';
+
+		::PopupMessage(ppxa, msg);
+		HeapFree(GetProcessHeap(), 0, msg);
+	}else{
+		hr = E_OUTOFMEMORY;
+		}
 		::SafeArrayUnaccessData(parr);
-	}
-	PopupMessage(ppxa, msg);
-	HeapFree(GetProcessHeap(), 0, msg);
-	return S_OK;
+	return hr;
 }
 
 STDMETHODIMP CScriptBase::Quit(long nErrorCode)
@@ -1373,6 +1469,7 @@ STDMETHODIMP CScriptBase::Quit(long nErrorCode)
 		return E_INVALIDARG;
 	}
 
+	// 各 SetScriptState の結果は意図して無視中。
 	m_InstanceValue->Engine->SetScriptState(SCRIPTSTATE_DISCONNECTED);
 	m_InstanceValue->Engine->SetScriptState(SCRIPTSTATE_CLOSED);
 
@@ -1383,6 +1480,7 @@ STDMETHODIMP CScriptBase::Quit(long nErrorCode)
 
 STDMETHODIMP CScriptBase::Sleep(long nMilliseconds)
 {
+	if ( nMilliseconds < 0 ) nMilliseconds = 0;
 	::Sleep(nMilliseconds);
 	return S_OK;
 }
@@ -1400,8 +1498,8 @@ STDMETHODIMP CScriptBase::get_result(BSTR *Value)
 
 	resulttext = m_InstanceValue->arg.resultstring;
 	if ( resulttext == NULL ){
-		resulttext = ::NullStr;
-	} else if ( m_ScriptLongResult != NULL ){
+		resulttext = ::NilStrW;
+	}else if ( m_ScriptLongResult != NULL ){
 		resulttext = m_ScriptLongResult;
 	}
 	*Value = ::SysAllocString(resulttext);
@@ -1420,10 +1518,11 @@ STDMETHODIMP CScriptBase::set_result(BSTR Value)
 	}
 	if ( Value == NULL ){
 		resulttext[0] = '\0';
-	} else if ( wcslen(Value) >= (CMDLINESIZE - 1) ){
+	}else if ( wcslen(Value) >= (CMDLINESIZE - 1) ){
 		m_ScriptLongResult = ::SysAllocString(Value);
+		if ( m_ScriptLongResult == NULL ) return E_OUTOFMEMORY;
 		resulttext[0] = '\0';
-	} else{
+	}else{
 		wcscpy(resulttext, Value);
 	}
 	return S_OK;
@@ -1509,7 +1608,7 @@ STDMETHODIMP CScriptBase::get_WindowIDName(BSTR *Value)
 		*Value = ::SysAllocString(ppxa->RegID);
 		return S_OK;
 	}
-	if ( (ppxa->Function(ppxa, PPXCMDID_GETSUBID, &bufW) == 0) || ((UTCHAR)bufW[0] > 'z') ){
+	if ( (ppxa->Function(ppxa, PPXCMDID_GETSUBID, &bufW) == PPXA_INVALID_FUNCTION) || ((UTCHAR)bufW[0] > 'z') ){
 		if ( ppxa->RegID[1] != '_' ){
 			*Value = ::SysAllocString(ppxa->RegID);
 			return S_OK;
@@ -1523,7 +1622,7 @@ STDMETHODIMP CScriptBase::get_WindowIDName(BSTR *Value)
 
 STDMETHODIMP CScriptBase::set_WindowIDName(BSTR Value)
 {
-	m_InstanceValue->IDNameMode = (Value[0] == '_') ? 0 : 1;
+	m_InstanceValue->IDNameMode = ((Value != NULL) && Value[0] == '_') ? 0 : 1;
 	return S_OK;
 }
 
@@ -1531,7 +1630,10 @@ STDMETHODIMP CScriptBase::Execute(BSTR param, long *result)
 {
 	ERRORCODE resultcode;
 
-	if ( param == NULL ) return S_OK;
+	if ( param == NULL ){
+		if ( result != NULL ) *result = NO_ERROR;
+		return S_OK;
+	}
 	resultcode = static_cast<ERRORCODE>(ppxa->Function(ppxa, PPXCMDID_EXECUTE, param));
 	if ( result != NULL ){
 		if ( resultcode <= 1 ) resultcode ^= 1;
@@ -1542,33 +1644,25 @@ STDMETHODIMP CScriptBase::Execute(BSTR param, long *result)
 
 STDMETHODIMP CScriptBase::SetPopLineMessage(BSTR message)
 {
-	if ( message != NULL ){
-		ppxa->Function(ppxa, PPXCMDID_SETPOPLINE, message);
-	}
+	ppxa->Function(ppxa, PPXCMDID_SETPOPLINE, (message != NULL) ? message : L"");
 	return S_OK;
 }
 
 STDMETHODIMP CScriptBase::lineMessage(BSTR message)
 {
-	if ( message != NULL ){
-		ppxa->Function(ppxa, PPXCMDID_SETPOPLINE, message);
-	}
+	ppxa->Function(ppxa, PPXCMDID_SETPOPLINE, (message != NULL) ? message : L"");
 	return S_OK;
 }
 
 STDMETHODIMP CScriptBase::report(BSTR message)
 {
-	if ( message != NULL ){
-		ppxa->Function(ppxa, PPXCMDID_REPORTTEXT, message);
-	}
+	ppxa->Function(ppxa, PPXCMDID_REPORTTEXT, (message != NULL) ? message : L"");
 	return S_OK;
 }
 
 STDMETHODIMP CScriptBase::log(BSTR message)
 {
-	if ( message != NULL ){
-		ppxa->Function(ppxa, PPXCMDID_DEBUGLOG, message);
-	}
+	ppxa->Function(ppxa, PPXCMDID_DEBUGLOG, (message != NULL) ? message : L"");
 	return S_OK;
 }
 
@@ -1589,15 +1683,12 @@ STDMETHODIMP CScriptBase::Extract(BSTR param, BSTR *result)
 
 		// 1.92 以降
 	*result = (BSTR)ppxa->Function(ppxa, PPXCMDID_LONG_EXTRACT_E, bufw);
-	if ( *result == NULL ){ // 1.69 以降
+	if ( *result == NULL ){ // 1.69 以降にフォールバック
 		*result = (BSTR)ppxa->Function(ppxa, PPXCMDID_LONG_EXTRACT, bufw);
-
-		if ( *result == NULL ){ // 1.68 以前
+		if ( *result == NULL ){ // 1.68 以前にフォールバック
+			ppxa->Function(ppxa, PPXCMDID_EXTRACT, bufw);
+			*result = ::SysAllocString(bufw);
 			if ( bufw != bufwtmp ) delete[] bufw;
-
-			wcscpy(bufwtmp, param);
-			ppxa->Function(ppxa, PPXCMDID_EXTRACT, bufwtmp);
-			*result = ::SysAllocString(bufwtmp);
 			return S_OK;
 		}
 	}
@@ -1605,9 +1696,11 @@ STDMETHODIMP CScriptBase::Extract(BSTR param, BSTR *result)
 	if ( bufw != bufwtmp ) delete[] bufw;
 
 	if ( ((DWORD_PTR)*result & ~(DWORD_PTR)0xffff) == 0 ){
+		// *result は 16bit に収まるエラーコード
 		m_extract_result = (ERRORCODE)(DWORD_PTR)*result;
-		*result = ::SysAllocString(L"");
+		*result = ::SysAllocString(::NilStrW);
 	}else{
+		// *result は BSTR の結果
 		m_extract_result = NO_ERROR;
 	}
 	return S_OK;
@@ -1617,10 +1710,13 @@ STDMETHODIMP CScriptBase::GetFileInformation(BSTR param, long Mode, BSTR *result
 {
 	WCHAR bufw[CMDLINESIZE];
 
-	if ( param == NULL ) return E_INVALIDARG;
+	if ( param == NULL ){
+		*result = NULL;
+		return E_INVALIDARG;
+	}
 	*(DWORD *)bufw = Mode;
-	bufw[2] = '\0';
-	wcscpy(bufw + 2, param);
+	bufw[sizeof(DWORD) / sizeof(WCHAR)] = '\0';
+	stplimcpyW(bufw + 2, param, CMDLINESIZE - 2);
 	ppxa->Function(ppxa, PPXCMDID_GETFILEINFO, bufw);
 	*result = ::SysAllocString(bufw + 2);
 	return S_OK;
@@ -1632,7 +1728,7 @@ STDMETHODIMP CScriptBase::option(BSTR, VARIANT, VARIANT *result)
 	return S_OK;
 }
 
-STDMETHODIMP CScriptBase::LoadCount(long type, long* count)
+STDMETHODIMP CScriptBase::LoadCount(long type, long *count)
 {
 	*count = type;
 	ppxa->Function(ppxa, PPXCMDID_DIRLOADCOUNT, count);
@@ -1641,11 +1737,11 @@ STDMETHODIMP CScriptBase::LoadCount(long type, long* count)
 
 STDMETHODIMP CScriptBase::GetComboItemCount(long id, long *result)
 {
-	DWORD_PTR buf;
+	long buf;
 
 	buf = id;
 	ppxa->Function(ppxa, PPXCMDID_COMBOIDCOUNT, &buf);
-	*result = (long)buf;
+	*result = buf;
 	return S_OK;
 }
 
@@ -1681,14 +1777,28 @@ STDMETHODIMP CScriptBase::get_EntryDisplayDirectories(long *Value)
 
 STDMETHODIMP CScriptBase::get_Entry(IEntry ** Value)
 {
+	if ( m_InstanceValue->EntryTypeInfo == NULL ){
+		HRESULT hr;
+
+		if ( FAILED(hr = ::LoadSelfTypeInfo(&m_InstanceValue->EntryTypeInfo, CLSID_IEntry_Class)) ){
+			return hr;
+		}
+	}
 	*Value = new CEntry(m_InstanceValue);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;
 	(*Value)->AddRef();
 	return S_OK;
 }
 
-STDMETHODIMP CScriptBase::get_Pane(IPane ** Value)
+STDMETHODIMP CScriptBase::get_Pane(IPane **Value)
 {
+	if ( m_InstanceValue->PaneTypeInfo == NULL ){
+		HRESULT hr;
+
+		if ( FAILED(hr = ::LoadSelfTypeInfo(&m_InstanceValue->PaneTypeInfo, CLSID_IPane_Class)) ){
+			return hr;
+		}
+	}
 	*Value = new CPane(m_InstanceValue);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;
 	(*Value)->AddRef();
@@ -1713,6 +1823,7 @@ STDMETHODIMP CScriptBase::get_EntryName(BSTR *result)
 	WCHAR bufw[CMDLINESIZE];
 	PPXCMDENUMSTRUCTW info;
 
+	bufw[0] = '\0';
 	info.buffer = bufw;
 	ppxa->Function(ppxa, 'R', &info);
 	*result = ::SysAllocString(bufw);
@@ -1721,8 +1832,9 @@ STDMETHODIMP CScriptBase::get_EntryName(BSTR *result)
 
 STDMETHODIMP CScriptBase::get_ComboIDName(BSTR *Value)
 {
-	WCHAR bufw[8];
+	WCHAR bufw[REGEXTIDSIZE];
 
+	bufw[0] = '\0';
 	ppxa->Function(ppxa, PPXCMDID_COMBOIDNAME, bufw);
 	*Value = ::SysAllocString(bufw);
 	return S_OK;
@@ -1805,6 +1917,7 @@ STDMETHODIMP CScriptBase::get_EntryComment(BSTR *Value)
 {
 	WCHAR bufw[CMDLINESIZE];
 
+	bufw[0] = '\0';
 	ppxa->Function(ppxa, PPXCMDID_CSRCOMMENT, bufw);
 	*Value = ::SysAllocString(bufw);
 	return S_OK;
@@ -1815,7 +1928,7 @@ STDMETHODIMP CScriptBase::set_EntryComment(BSTR Value)
 	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_CSRSETCOMMENT, (Value != NULL) ? Value : L"") ){
 		return S_OK;
 	}else{
-		return DISP_E_EXCEPTION;
+		return E_FAIL;
 	}
 }
 
@@ -1824,7 +1937,7 @@ STDMETHODIMP CScriptBase::EntryFirstMark(long *result)
 	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_CSRMARKFIRST, result) ){
 		return S_OK;
 	}else{
-		return DISP_E_EXCEPTION;
+		return E_FAIL;
 	}
 }
 
@@ -1833,26 +1946,33 @@ STDMETHODIMP CScriptBase::EntryNextMark(long *result)
 	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_CSRMARKNEXT, result) ){
 		return S_OK;
 	}else{
-		return DISP_E_EXCEPTION;
+		return E_FAIL;
 	}
 }
 
 STDMETHODIMP CScriptBase::EntryPrevMark(long *result)
 {
-	ppxa->Function(ppxa, PPXCMDID_CSRMARKPREV, result);
-	return S_OK;
+	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_CSRMARKPREV, result) ){
+		return S_OK;
+	}else{
+		return E_FAIL;
+	}
 }
 
 STDMETHODIMP CScriptBase::EntryLastMark(long *result)
 {
-	ppxa->Function(ppxa, PPXCMDID_CSRMARKLAST, result);
-	return S_OK;
+	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_CSRMARKLAST, result) ){
+		return S_OK;
+	}else{
+		return E_FAIL;
+	}
 }
 
 STDMETHODIMP CScriptBase::get_DriveVolumeLabel(BSTR *Value)
 {
 	WCHAR bufw[CMDLINESIZE];
 
+	bufw[0] = '\0';
 	ppxa->Function(ppxa, PPXCMDID_DRIVELABEL, bufw);
 	*Value = ::SysAllocString(bufw);
 	return S_OK;
@@ -1893,7 +2013,7 @@ STDMETHODIMP CScriptBase::EntryInsert(long index, BSTR entryname)
 	DWORD_PTR dptrs[2];
 
 	dptrs[0] = static_cast<DWORD_PTR>(index);
-	dptrs[1] = (DWORD_PTR)entryname;
+	dptrs[1] = (DWORD_PTR)(BSTR)((entryname != NULL) ? entryname : L"");
 	ppxa->Function(ppxa, PPXCMDID_ENTRYINSERTMSG, dptrs);
 	return S_OK;
 }
@@ -1909,40 +2029,56 @@ BOOL TryOpenClipboard(HWND hWnd)
 	}
 }
 
-STDMETHODIMP CScriptBase::get_Clipboard(BSTR *Value/*[out, retval]*/)
+STDMETHODIMP CScriptBase::get_Clipboard(BSTR *Value)
 {
+	HANDLE clipdata;
+	WCHAR *src;
+
 	*Value = NULL;
 	if ( TryOpenClipboard(ppxa->hWnd) != FALSE ){
-		HANDLE clipdata;
-		WCHAR *src;
-
 		clipdata = GetClipboardData(CF_UNICODETEXT);
 		if ( clipdata != NULL ){
 			src = (WCHAR *)GlobalLock(clipdata);
-			*Value = ::SysAllocString(src);
-			GlobalUnlock(clipdata);
+			if ( src != NULL ){
+				*Value = ::SysAllocString(src);
+				GlobalUnlock(clipdata);
+			}
 		}
 		CloseClipboard();
 	}
-	if ( *Value == NULL ) *Value = ::SysAllocString(::NullStr);
-	return S_OK;
+	if ( *Value != NULL ) return S_OK;
+	*Value = ::SysAllocString(::NilStrW);
+	return S_FALSE;
 }
 
 STDMETHODIMP CScriptBase::set_Clipboard(BSTR Value)
 {
 	HGLOBAL hm;
 	size_t len;
+	WCHAR *dest;
 
 	len = SysStringByteLen(Value) + sizeof(WCHAR); // NIL分を追加する
 	hm = GlobalAlloc(GMEM_MOVEABLE, len);
 	if ( hm == NULL ) return E_OUTOFMEMORY;
-	memcpy(GlobalLock(hm), Value, len);
-	GlobalUnlock(hm);
-	TryOpenClipboard(ppxa->hWnd);
-	EmptyClipboard();
-	SetClipboardData(CF_UNICODETEXT, hm);
-	CloseClipboard();
-	return S_OK;
+	dest = (WCHAR *)GlobalLock(hm);
+	if ( dest != NULL ){
+		if ( Value != NULL ){
+			memcpy(dest, Value, len);
+		}else{
+			dest[0] = '\0';
+		}
+		GlobalUnlock(hm);
+		if ( TryOpenClipboard(ppxa->hWnd) != FALSE ){
+			if ( EmptyClipboard() ){
+				if ( SetClipboardData(CF_UNICODETEXT, hm) ) hm = NULL;
+			}
+			CloseClipboard();
+		}
+	}
+	if ( hm == NULL ) return S_OK; // hm がなくなった: SetClipboardData が成功
+	// hm が残っている: SetClipboardData が成功していない
+	GlobalFree(hm);
+	return S_FALSE;
 }
 
 STDMETHODIMP CScriptBase::get_StayMode(long *Value)
@@ -1958,6 +2094,8 @@ STDMETHODIMP CScriptBase::set_StayMode(long Value)
 	if ( Value >= ScriptStay_Stay ){
 		if ( m_InstanceValue->stay.threadID == 0 ){
 			Value = ChainStayInstance(m_InstanceValue, Value);
+		}else{
+			return S_OK; // 常駐済み、m_InstanceValue->stay.mode を変更しない
 		}
 	}else{
 		if ( m_InstanceValue->stay.threadID != 0 ){
@@ -1972,10 +2110,10 @@ STDMETHODIMP CScriptBase::get_PointType(long *Value)
 {
 	long var[3];
 
-	if ( 1 == ppxa->Function(ppxa, PPXCMDID_POINTINFO, var) ){
+	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_POINTINFO, var) ){
 		*Value = var[0];
 		return S_OK;
-	} else{
+	}else{
 		return E_INVALIDARG;
 	}
 }
@@ -1984,10 +2122,10 @@ STDMETHODIMP CScriptBase::get_PointIndex(long *Value)
 {
 	long var[3];
 
-	if ( 1 == ppxa->Function(ppxa, PPXCMDID_POINTINFO, var) ){
+	if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_POINTINFO, var) ){
 		*Value = var[1];
 		return S_OK;
-	} else{
+	}else{
 		return E_INVALIDARG;
 	}
 }
@@ -1997,22 +2135,22 @@ STDMETHODIMP CScriptBase::Cursor(long x, long y, long *result) // [36]
 	long var[4];
 
 	if ( x < -1 ){
-		if ( 1 != ppxa->Function(ppxa, PPXCMDID_CSRLOCATE, var) ){
+		if ( PPXA_NO_ERROR != ppxa->Function(ppxa, PPXCMDID_CSRLOCATE, var) ){
 			return E_INVALIDARG;
 		}
 		if ( x == -2 ){
 			*result = var[0];
-		} else{
+		}else{
 			*result = var[1];
 		}
-	} else{
+	}else{
 		var[0] = x;
 		var[1] = y;
 		var[2] = 0;
 		var[3] = 0;
-		if ( 1 == ppxa->Function(ppxa, PPXCMDID_CSRSETLOCATE, var) ){
+		if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_CSRSETLOCATE, var) ){
 			*result = 0;
-		} else{
+		}else{
 			return E_INVALIDARG;
 		}
 	}
@@ -2029,6 +2167,7 @@ STDMETHODIMP CScriptBase::get_ScriptEngineName(BSTR *Value) // [37]
 
 		VariantInit(&dummyvt);
 		dummyvt.vt = VT_BSTR;
+		dummyvt.bstrVal = NULL;
 		if ( SUCCEEDED(ScriptProperty->GetProperty(SCRIPTPROP_NAME, NULL, &dummyvt)) ){
 			*Value = ::SysAllocString(dummyvt.bstrVal);
 		}
@@ -2044,7 +2183,6 @@ STDMETHODIMP CScriptBase::get_ScriptEngineVersion(BSTR *Value) // [40]
 	WCHAR buf[32];
 	int major = 0, minor = 0, build = 0;
 
-	*Value = NULL;
 	if ( SUCCEEDED(m_InstanceValue->Engine->QueryInterface(IID_IActiveScriptProperty, (void**)&ScriptProperty)) ){
 		VARIANT dummyvt;
 
@@ -2068,14 +2206,17 @@ STDMETHODIMP CScriptBase::get_ScriptEngineVersion(BSTR *Value) // [40]
 	return S_OK;
 }
 
-STDMETHODIMP CScriptBase::getValue(BSTR key, BSTR * Value)
+STDMETHODIMP CScriptBase::getValue(BSTR key, BSTR *Value)
 {
 	WCHAR *uptr[2], buf[CMDLINESIZE];
 
-	if ( key == NULL ) return E_INVALIDARG;
+	if ( key == NULL ){
+		*Value = NULL;
+		return E_INVALIDARG;
+	}
 	uptr[0] = key;
 	uptr[1] = buf;
-	if ( 0 == ppxa->Function(ppxa, PPXCMDID_GETPROCVARIABLEDATA, uptr) ){
+	if ( PPXA_INVALID_FUNCTION == ppxa->Function(ppxa, PPXCMDID_GETPROCVARIABLEDATA, uptr) ){
 		buf[0] = '\0';
 	}
 	*Value = ::SysAllocString(uptr[1]);
@@ -2099,7 +2240,7 @@ STDMETHODIMP CScriptBase::setProcessValue(BSTR key, BSTR value)
 	return setValue(key, value);
 }
 
-STDMETHODIMP CScriptBase::getProcessValue(BSTR key, BSTR * Value)
+STDMETHODIMP CScriptBase::getProcessValue(BSTR key, BSTR *Value)
 {
 	return getValue(key, Value);
 }
@@ -2115,14 +2256,17 @@ STDMETHODIMP CScriptBase::setIValue(BSTR key, BSTR value)
 	return S_OK;
 }
 
-STDMETHODIMP CScriptBase::getIValue(BSTR key, BSTR * Value)
+STDMETHODIMP CScriptBase::getIValue(BSTR key, BSTR *Value)
 {
 	WCHAR *uptr[2], buf[CMDLINESIZE];
 
-	if ( key == NULL ) return E_INVALIDARG;
+	if ( key == NULL ){
+		*Value = NULL;
+		return E_INVALIDARG;
+	}
 	uptr[0] = key;
 	uptr[1] = buf;
-	if ( 0 == ppxa->Function(ppxa, PPXCMDID_GETWNDVARIABLEDATA, uptr) ){
+	if ( PPXA_INVALID_FUNCTION == ppxa->Function(ppxa, PPXCMDID_GETWNDVARIABLEDATA, uptr) ){
 		buf[0] = '\0';
 	}
 	*Value = ::SysAllocString(uptr[1]);
@@ -2136,12 +2280,15 @@ void CScriptBase::SetResult(void)
 		WCHAR *resulttext;
 
 		resulttext = m_InstanceValue->arg.resultstring;
-		if ( 1 == ppxa->Function(ppxa, PPXCMDID_LONG_RESULT, m_ScriptLongResult) ){
-			resulttext[0] = '\0';
-		} else{
-			wcscpy(resulttext, L"<length over>");
+		if ( resulttext != NULL ){
+			if ( PPXA_NO_ERROR == ppxa->Function(ppxa, PPXCMDID_LONG_RESULT, m_ScriptLongResult) ){
+				resulttext[0] = '\0';
+			}else{
+				wcscpy(resulttext, L"<length over>");
+			}
 		}
 		::SysFreeString(m_ScriptLongResult);
+		m_ScriptLongResult = NULL;
 	}
 }
 
@@ -2160,14 +2307,14 @@ void CScriptBase::UpdatePPxInfo(void)
 class CPPxEnum : public IPPxEnum
 {
 public:
-	CPPxEnum(IEnumVARIANT *object){
+	CPPxEnum(IEnumVARIANT *object, ITypeInfo *EnumTypeInfo){
 		m_refCount = 0;
-		m_last = FALSE;
-		m_typeInfo = NULL;
+		m_valid = -1;
+		m_typeInfo = EnumTypeInfo;
+		m_typeInfo->AddRef();
 		VariantInit(&m_Item); // VT_EMPTY
 		m_Enum = object;
 		m_Enum->AddRef();
-		::LoadTypeInfo(&m_typeInfo, CLSID_IPPxEnum_Class, 0);
 	}
 
 // IUnknown
@@ -2198,69 +2345,81 @@ public:
 	}
 
 // IDispatch
-	STDMETHODIMP GetTypeInfoCount(/* [out] */UINT *iTInfo)
+	STDMETHODIMP GetTypeInfoCount(UINT *iTInfo)
 	{
-		if ( (DWORD_PTR)iTInfo < 0x10000 ) return E_NOTIMPL;
+		if ( iTInfo == NULL ) return E_NOTIMPL;
 		*iTInfo = 1;
 		return S_OK;
 	}
 
-	STDMETHODIMP GetTypeInfo(/* [in] */UINT iTInfo, /* [in] */LCID lcid, /* [out] */ITypeInfo **ppTInfo)
+	STDMETHODIMP GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 	{
-		m_typeInfo->AddRef();
+		if ( iTInfo != 0 ){
+			*ppTInfo = NULL;
+			return DISP_E_BADINDEX;
+		}
 		*ppTInfo = m_typeInfo;
+		m_typeInfo->AddRef();
 		return S_OK;
 	}
 
-	STDMETHODIMP GetIDsOfNames(/* [in] */REFIID riid, /* [size_is][in] */OLECHAR **rgszNames, /* [in] */UINT cNames, /* [in] */LCID lcid, /* [size_is][out] */DISPID *rgDispId)
+	STDMETHODIMP GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID lcid, DISPID *rgDispId)
 	{
 		if ( riid != IID_NULL ) return E_INVALIDARG;
-//		MessageW(*rgszNames);
 		return DispGetIDsOfNames(m_typeInfo, rgszNames, cNames, rgDispId);
 	}
 
-	STDMETHODIMP Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID riid, /* [in] */LCID lcid, /* [in] */WORD wFlags, /* [out][in] */DISPPARAMS *pDispParams, /* [out] */VARIANT *pVarResult, /* [out] */EXCEPINFO *pExcepInfo, /* [out] */UINT *puArgErr);
+	STDMETHODIMP Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr);
 
 	void getItem(void)
 	{
 		VARIANT value;
 		HRESULT result;
-		ULONG c;
+		ULONG c = 0;
 
-		if ( m_last ) return;
 		VariantInit(&value);
 		result = m_Enum->Next(1, &value, &c);
-		if ( SUCCEEDED(result) ){
-			if ( c != 0 ){
-				VariantClear(&m_Item);
-				m_Item = value;
-			}else{
-				m_last = TRUE;
-			}
+		if ( SUCCEEDED(result) && (c > 0) ){
+			VariantClear(&m_Item);
+			m_Item = value;
+			m_valid = 1;
 		}else{
-			m_last = TRUE;
+			m_valid = 0;
 		}
 	}
 
 // Enumerator
 	STDMETHODIMP moveFirst(void)
 	{
-		m_Enum->Reset();
-		m_last = FALSE;
-		return S_OK;
-	}
-
-	STDMETHODIMP moveNext( long * Value )
-	{
 		VariantClear(&m_Item);
-		*Value = 1;
+		m_valid = -1;
+
+		HRESULT hr = m_Enum->Reset();
+		if ( FAILED(hr) ) return hr;
 		return S_OK;
 	}
 
-	STDMETHODIMP atEnd(long * value )
+	STDMETHODIMP moveNext(long *Value)
 	{
-		if ( m_Item.vt == VT_EMPTY ) getItem();
-		*value = m_last;
+		if ( m_valid < 0 ) getItem(); // 未取得
+		if ( m_valid == 0 ){
+			*Value = 0;
+		}else{
+			VariantClear(&m_Item);
+			m_valid = -1;
+			*Value = 1;
+		}
+		return S_OK;
+	}
+
+	STDMETHODIMP atEnd(long *Value)
+	{
+		if ( m_valid == 0 ){ // 末尾到達済み
+			*Value = 1;
+		}else{
+			if ( m_valid < 0 ) getItem(); // 未取得
+			*Value = (m_valid <= 0) ? 1 : 0;
+		}
 		return S_OK;
 	}
 
@@ -2279,8 +2438,7 @@ public:
 
 	STDMETHODIMP Reset()
 	{
-		moveFirst();
-		return E_NOTIMPL;
+		return moveFirst();
 	}
 
 private:
@@ -2288,10 +2446,10 @@ private:
 	VARIANT m_Item;
 	ITypeInfo *m_typeInfo;
 	int m_refCount;
-	int m_last;
+	int m_valid; // m_Item の状態, 負: 未取得, 0: 末尾到着, 正: 取得済み
 };
 
-STDMETHODIMP CPPxEnum::Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID riid, /* [in] */LCID lcid, /* [in] */WORD wFlags, /* [out][in] */DISPPARAMS *pDispParams, /* [out] */VARIANT *pVarResult, /* [out] */EXCEPINFO *pExcepInfo, /* [out] */UINT *puArgErr)
+STDMETHODIMP CPPxEnum::Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr)
 {
 	int arg;
 	HRESULT hr;
@@ -2313,10 +2471,9 @@ STDMETHODIMP CPPxEnum::Invoke(/* [in] */DISPID dispIdMember, /* [in] */REFIID ri
 			{
 				int index;
 
-//				pVarResult->vt = VT_DISPATCH;
 				if ( pDispParams->cArgs == 0 ){
-					index = 0;
-				} else{
+					index = -1;
+				}else{
 					FixArgType(0, VT_I4);
 					index = pDispParams->rgvarg[0].lVal;
 				}
@@ -2351,36 +2508,54 @@ ArgConvError:
 }
 
 // 現在 index による指定は未実装
-STDMETHODIMP CPPxEnum::Item(long /*index*/, VARIANT* Value)
+STDMETHODIMP CPPxEnum::Item(long index, VARIANT *Value)
 {
-	if ( m_Item.vt == VT_EMPTY ){
-		if ( m_last ) return E_FAIL;
+	if ( index >= 0 ) return E_NOTIMPL;
+	if ( m_valid <= 0 ){
+		if ( m_valid == 0 ) return E_FAIL;
 		getItem();
-		if ( m_last ) return E_FAIL;
+		if ( m_valid == 0 ) return E_FAIL;
 	}
-	VariantCopy(Value, &m_Item);
-	return S_OK;
+	return VariantCopy(Value, &m_Item);
 }
 
 STDMETHODIMP CScriptBase::Enumerator(LPDISPATCH object, LPDISPATCH *Value)
 {
 	DISPPARAMS params;
 	HRESULT result;
-
 	VARIANT resultvalue;
+	IEnumVARIANT *pEnumVariant = NULL;
+
+	if ( object == NULL ) return E_INVALIDARG;
+	if ( m_InstanceValue->PPxEnumTypeInfo == NULL ){
+		if ( FAILED(result = ::LoadSelfTypeInfo(&m_InstanceValue->PPxEnumTypeInfo, CLSID_IPPxEnum_Class)) ){
+			return result;
+		}
+	}
+
 	params.rgvarg = NULL;
 	params.rgdispidNamedArgs = NULL;
 	params.cArgs = 0;
 	params.cNamedArgs = 0;
+	VariantInit(&resultvalue);
 
 	result = object->Invoke(DISPID_NEWENUM, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &params, &resultvalue, NULL, NULL);
-	if ( SUCCEEDED(result) ){
-		*Value = new CPPxEnum(static_cast<IEnumVARIANT *>(resultvalue.punkVal));
-		if ( *Value != NULL ){
-			(*Value)->AddRef();
-			return S_OK;
-		}
-		return E_OUTOFMEMORY;
+	if ( FAILED(result) ) return result;
+
+	if ( ((resultvalue.vt == VT_UNKNOWN) || (resultvalue.vt == VT_DISPATCH)) &&
+		 (resultvalue.punkVal != NULL) ){
+		result = resultvalue.punkVal->QueryInterface(IID_IEnumVARIANT, (void **)&pEnumVariant);
+	}else{
+		result = E_NOINTERFACE;
 	}
-	return result;
+	VariantClear(&resultvalue);
+
+	if ( FAILED(result) ) return result;
+	if ( pEnumVariant == NULL ) return E_NOINTERFACE;
+
+	*Value = new CPPxEnum(pEnumVariant, m_InstanceValue->PPxEnumTypeInfo);
+	pEnumVariant->Release();
+	if ( *Value == NULL ) return E_OUTOFMEMORY;
+	(*Value)->AddRef();
+	return S_OK;
 }

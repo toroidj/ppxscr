@@ -14,15 +14,12 @@
 CEntry::CEntry(InstanceValueStruct *InstanceValue)
 {
 	T_IUNKNOWN_INITDEFINE();
-	m_typeInfo = NULL;
+	m_typeInfo = InstanceValue->EntryTypeInfo;
+	m_typeInfo->AddRef();
 	m_InstanceValue = InstanceValue;
 	m_ppxa = &(InstanceValue->ppxa);
 	EnumMode = ENUMENTRY_WITHMARK;
 	m_index = 0;
-
-	if ( FAILED(::LoadTypeInfo(&m_typeInfo, CLSID_IEntry_Class, 0)) ){
-		::PopupMessage(InstanceValue->ppxa, UNICODESTR(CLASSNAMES) UNICODESTR(" load error"));
-	}
 }
 
 //----------------------------------------------------- IUnknown
@@ -63,7 +60,8 @@ STDMETHODIMP CEntry::GetInfoOfIndex(ULONG iti, DWORD dwMCIFlags, ITypeInfo **ppt
 	Debug_WriteLog(CLASSNAMES "::GetInfoOfIndex", NULL);
 	if ( iti != 0 ) return E_INVALIDARG;
 	if ( dwMCIFlags & MULTICLASSINFO_GETTYPEINFO ){
-		GetTypeInfo(0, 0, pptiCoClass);
+		HRESULT hr = GetTypeInfo(0, 0, pptiCoClass);
+		if ( FAILED(hr) ) return hr;
 	}
 	if ( dwMCIFlags & MULTICLASSINFO_GETNUMRESERVEDDISPIDS ){
 		*pdwTIFlags = 0;
@@ -98,14 +96,18 @@ STDMETHODIMP CEntry::GetGUID(DWORD dwGuidKind, GUID *pGUID)
 STDMETHODIMP CEntry::GetTypeInfoCount(UINT *iTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfoCount", NULL);
-	if ( (DWORD_PTR)iTInfo < 0x10000 ) return E_NOTIMPL;
+	if ( iTInfo == NULL ) return E_NOTIMPL;
 	*iTInfo = 1;
 	return S_OK;
 }
 
-STDMETHODIMP CEntry::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
+STDMETHODIMP CEntry::GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfo", NULL);
+	if ( iTInfo != 0 ){
+		*ppTInfo = NULL;
+		return DISP_E_BADINDEX;
+	}
 	*ppTInfo = m_typeInfo;
 	m_typeInfo->AddRef();
 	return S_OK;
@@ -114,7 +116,7 @@ STDMETHODIMP CEntry::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
 STDMETHODIMP CEntry::GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID, DISPID *rgDispId)
 {
 	Debug_WriteLog(CLASSNAMES "::GetIDsOfNames:", *rgszNames);
-	if ( riid != IID_NULL ) return E_INVALIDARG;
+	if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
 	return DispGetIDsOfNames(m_typeInfo, rgszNames, cNames, rgDispId);
 }
 
@@ -146,18 +148,16 @@ STDMETHODIMP CEntry::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFla
 				pVarResult->vt = VT_UNKNOWN;
 				return get__NewEnum(&pVarResult->punkVal);
 
-			case DISPID_VALUE:
-			{
+			case DISPID_VALUE: {
 				int index;
 
-				pVarResult->vt = VT_UNKNOWN;
 				if ( pDispParams->cArgs == 0 ){
 					index = -1;
 				} else{
 					FixArgType(0, VT_I4);
 					index = pDispParams->rgvarg[0].lVal;
 				}
-				return Item(index, reinterpret_cast<IEntry **>(&pVarResult->punkVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, Item(index, reinterpret_cast<IEntry **>(&pVarResult->punkVal)));
 			}
 
 			case 1:
@@ -260,13 +260,11 @@ STDMETHODIMP CEntry::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFla
 
 			case 26:
 				ArgsCheck(0);
-				pVarResult->vt = VT_DISPATCH;
-				return get_AllMark(reinterpret_cast<IEntry**>(&pVarResult->pdispVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, get_AllMark(reinterpret_cast<IEntry**>(&pVarResult->pdispVal)));
 
 			case 27:
 				ArgsCheck(0);
-				pVarResult->vt = VT_DISPATCH;
-				return get_AllEntry(reinterpret_cast<IEntry**>(&pVarResult->pdispVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, get_AllEntry(reinterpret_cast<IEntry**>(&pVarResult->pdispVal)));
 
 			case 28:
 				ArgsCheck(0);
@@ -275,8 +273,7 @@ STDMETHODIMP CEntry::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFla
 
 			case 29:
 				ArgsCheck(0);
-				pVarResult->vt = VT_DISPATCH;
-				return get_Current(reinterpret_cast<IEntry**>(&pVarResult->pdispVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, get_Current(reinterpret_cast<IEntry**>(&pVarResult->pdispVal)));
 
 			case 30:
 				ArgsCheck(1);
@@ -330,20 +327,20 @@ STDMETHODIMP CEntry::get_Count(long *plCount)
 {
 	Debug_WriteLog(CLASSNAMES "::Count", NULL);
 	return ((*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, plCount) == PPXA_NO_ERROR ) ?
-		S_OK : DISP_E_EXCEPTION;
+		S_OK : E_FAIL;
 }
 
 STDMETHODIMP CEntry::Item(long nIndex, IEntry **pValue)
 {
-	int max;
+	int entries = 0;
 
 	Debug_WriteLog(CLASSNAMES "::Item", NULL);
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &max);
+	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &entries);
 	if ( nIndex < 0 ){
-		if ( nIndex < -1 ) return 0x800A0009;
+		if ( nIndex < -1 ) return VB_E_OUTOFRANGE;
 		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_CSRINDEX, &nIndex);
-	} else if ( nIndex >= max ){
-		return 0x800A0009;
+	} else if ( nIndex >= entries ){
+		return VB_E_OUTOFRANGE;
 	}
 
 	*pValue = new CEntry(m_InstanceValue);
@@ -357,8 +354,7 @@ STDMETHODIMP CEntry::Item(long nIndex, IEntry **pValue)
 STDMETHODIMP CEntry::get_length(long *plCount)
 {
 	Debug_WriteLog(CLASSNAMES "::length", NULL);
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, plCount);
-	return S_OK;
+	return get_Count(plCount);
 }
 
 //----------------------------------------------------- IEntry
@@ -374,10 +370,10 @@ STDMETHODIMP CEntry::get_index(long *Value)
 STDMETHODIMP CEntry::set_index(long Value)
 {
 	if ( Value >= 0 ){
-		long max;
+		long entries;
 
-		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &max);
-		if ( Value < max ) m_index = Value;
+		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &entries);
+		if ( Value < entries ) m_index = Value;
 	}
 	return S_OK;
 }
@@ -391,7 +387,8 @@ STDMETHODIMP CEntry::get_Name(BSTR *Value)
 		*Value = ::SysAllocString(tmp.path);
 		return S_OK;
 	}
-	return DISP_E_EXCEPTION;
+	*Value = NULL;
+	return E_FAIL;
 }
 
 STDMETHODIMP CEntry::get_ShortName(BSTR *Value)
@@ -399,8 +396,10 @@ STDMETHODIMP CEntry::get_ShortName(BSTR *Value)
 	PPXUPTR_INDEX_UPATHW tmp;
 
 	tmp.index = m_index;
+	tmp.path[0] = '\0';
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYANAME, &tmp);
-	if ( tmp.path[0] == '\0' ){
+	if ( tmp.path[0] == '\0' ){ // フォールバック
+		tmp.index = m_index;
 		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYNAME, &tmp);
 	}
 	*Value = ::SysAllocString(tmp.path);
@@ -421,7 +420,6 @@ STDMETHODIMP CEntry::get_Size(double *Value)
 	size[0] = m_index;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMSIZE, size);
 	*Value = (double)size[0] + (double)size[1] * DWORDPP;
-
 	return S_OK;
 }
 
@@ -431,6 +429,7 @@ STDMETHODIMP CEntry::get_DateCreated(double *Value)
 	SYSTEMTIME stime;
 
 	ftime.dwLowDateTime = m_index;
+	ftime.dwHighDateTime = 0;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYCTIME, &ftime);
 
 	FileTimeToLocalFileTime(&ftime, &ltime);
@@ -445,6 +444,7 @@ STDMETHODIMP CEntry::get_DateLastAccessed(double *Value)
 	SYSTEMTIME stime;
 
 	ftime.dwLowDateTime = m_index;
+	ftime.dwHighDateTime = 0;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYATIME, &ftime);
 
 	FileTimeToLocalFileTime(&ftime, &ltime);
@@ -459,6 +459,7 @@ STDMETHODIMP CEntry::get_DateLastModified(double *Value)
 	SYSTEMTIME stime;
 
 	ftime.dwLowDateTime = m_index;
+	ftime.dwHighDateTime = 0;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMTIME, &ftime);
 
 	FileTimeToLocalFileTime(&ftime, &ltime);
@@ -552,21 +553,35 @@ STDMETHODIMP CEntry::get_Comment(BSTR *Value)
 	WCHAR bufw[CMDLINESIZE];
 
 	*((long *)bufw) = m_index;
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYCOMMENT, bufw);
+	if ( PPXA_NO_ERROR != (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYCOMMENT, bufw) ){
+		bufw[0] = '\0'; // 失敗したときも空欄
+	}
 	*Value = ::SysAllocString(bufw);
 	return S_OK;
 }
 
 STDMETHODIMP CEntry::set_Comment(BSTR Value)
 {
-	WCHAR bufw[CMDLINESIZE];
+#define BUFXLONG (sizeof(long) / sizeof(WCHAR))
+	WCHAR bufw[CMDLINESIZE + BUFXLONG], *buf;
 	UINT len;
 
-	*((long *)bufw) = m_index;
 	len = SysStringLen(Value);
-	if ( len != 0 ) memcpy(bufw + 2, Value, sizeof(WCHAR) * len);
-	bufw[len + 2] = '\0';
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYSETCOMMENT, bufw);
+	if ( len >= CMDLINESIZE ){
+		buf = new WCHAR[len + BUFXLONG + 1];
+		if ( buf == NULL ) return E_OUTOFMEMORY;
+	}else{
+		buf = bufw;
+		if ( Value == NULL ) Value = L""; // このとき、len == 0
+	}
+
+	*((long *)buf) = m_index;
+	if ( len != 0 ){
+		memcpy(buf + BUFXLONG, Value, sizeof(WCHAR) * len);
+	}
+	buf[len + BUFXLONG] = '\0';
+	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYSETCOMMENT, buf);
+	if ( buf != bufw ) delete[] buf;
 	return S_OK;
 }
 
@@ -575,8 +590,12 @@ STDMETHODIMP CEntry::Information(BSTR *Value)
 	PPXUPTR_ENTRYINFOW entryinfo;
 
 	entryinfo.index = m_index;
+	entryinfo.result = NULL;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYINFO, &entryinfo);
-	if ( (DWORD_PTR)entryinfo.result < 0x10000 ) return E_NOTIMPL;
+	if ( (DWORD_PTR)entryinfo.result < 0x10000 ){
+		*Value = NULL;
+		return E_NOTIMPL;
+	}
 	*Value = ::SysAllocString(entryinfo.result);
 	HeapFree(GetProcessHeap(), 0, entryinfo.result);
 	return S_OK;
@@ -591,8 +610,8 @@ STDMETHODIMP CEntry::GetComment(long id, BSTR *Value)
 	eeds.id = (id > 100) ? id : (DFC_COMMENTEX_MAX - (id - 1));
 	eeds.size = sizeof(bufw);
 	eeds.data = (BYTE *)bufw;
-	if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYEXTDATA_GETDATA, &eeds) == 0 ){
-		bufw[0] = '\0';
+	if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYEXTDATA_GETDATA, &eeds) == PPXA_INVALID_FUNCTION ){
+		bufw[0] = '\0'; // 失敗したときも空欄
 	}
 	*Value = ::SysAllocString(bufw);
 	return S_OK;
@@ -604,18 +623,9 @@ STDMETHODIMP CEntry::SetComment(long id, BSTR Value)
 
 	eeds.entry = m_index;
 	eeds.id = (id > 100) ? id : (DFC_COMMENTEX_MAX - (id - 1));
-	if ( Value != NULL ){
-		eeds.size = (SysStringLen(Value) + 1) * sizeof(WCHAR);
-		if ( eeds.size == sizeof(WCHAR) ){ // 空文字列
-			eeds.data = (BYTE *)L"";
-		} else{
-			eeds.data = (BYTE *)Value;
-		}
-	}else{
-		eeds.size = sizeof(WCHAR);
-		eeds.data = (BYTE *)L"";
-	}
-	if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYEXTDATA_SETDATA, &eeds) == 0 ){
+	eeds.size = (SysStringLen(Value) + 1) * sizeof(WCHAR);
+	eeds.data = (BYTE *)(WCHAR *)((Value != NULL) ? Value : ::NilStrW);
+	if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYEXTDATA_SETDATA, &eeds) == PPXA_INVALID_FUNCTION ){
 		return E_NOTIMPL;
 	}
 	return S_OK;
@@ -625,12 +635,12 @@ STDMETHODIMP CEntry::IndexFrom(BSTR name, LONG *moved)
 {
 	PPXUPTR_ENTRYINFOW info;
 
-	info.result = name;
+	info.result = (name != NULL) ? name : L"";
 	if ( PPXA_NO_ERROR == (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYFROMNAME, &info) ){
-		*moved = 1;
+		if ( moved != NULL ) *moved = 1;
 		m_index = info.index;
 	}else{
-		*moved = 0;
+		if ( moved != NULL ) *moved = 0;
 	}
 	return S_OK;
 }
@@ -639,19 +649,24 @@ STDMETHODIMP CEntry::IndexFrom(BSTR name, LONG *moved)
 STDMETHODIMP CEntry::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched)
 {
 	int maxindex;
+	ULONG celtindex, celtleft;
 
 	Debug_WriteLog(CLASSNAMES "::Next", NULL);
 	if ( CeltFetched != NULL ) *CeltFetched = 0;
 	if ( celt == 0 ) return S_OK;
-	if ( (rgvar == NULL) || ((celt != 1) && (CeltFetched == NULL)) ){
-		return E_INVALIDARG;
+
+	if ( rgvar != NULL ){
+		for ( celtindex = 0; celtindex < celt; celtindex++){
+			VariantInit(&rgvar[celtindex]);
+		}
 	}
+
 	if ( m_index == -2 ){ // 最初から
 		if ( EnumMode == -ENUMENTRY_INDEX ){
 			m_next_index = 0;
 		}else{ // -ENUMENTRY_WITHMARK / -ENUMENTRY_MARKONLY
-			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST_HS, &m_next_index) == 0 ){
-				if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST, &m_next_index) == 0 ){
+			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST_HS, &m_next_index) == PPXA_INVALID_FUNCTION ){
+				if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST, &m_next_index) == PPXA_INVALID_FUNCTION ){
 					return S_FALSE;
 				}
 			}
@@ -663,30 +678,40 @@ STDMETHODIMP CEntry::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched)
 		}
 	}
 	if ( EnumMode == -ENUMENTRY_INDEX ){
+		maxindex = 0;
 		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &maxindex);
 	}
 
-	while ( celt-- ){
+	celtleft = celt;
+	while ( celtleft-- ){
 		if ( m_index == -1 ) return S_FALSE;
 		m_index = m_next_index;
 		if ( m_index == -1 ) return S_FALSE;
 
 		if ( IsEntryVailed(m_index) == false ){
-			celt++;
+			celtleft++; // 無効(削除済み、相対指定)は、スキップする
 		}else{
 			if ( rgvar != NULL ){
+				IEntry *ventry;
+
 				rgvar->vt = VT_DISPATCH;
-				rgvar->pdispVal = this;
-				AddRef();
+				rgvar->pdispVal = ventry = new CEntry(m_InstanceValue);
+				if ( ventry == NULL ){
+					for ( ; celtleft < celt; celtleft++) VariantClear(rgvar--);
+					if ( CeltFetched != NULL ) *CeltFetched = 0;
+					return E_OUTOFMEMORY;
+				}
+				ventry->AddRef();
+				ventry->set_index(m_index);
 				rgvar++;
-				if ( CeltFetched != NULL ) (*CeltFetched)++;
 			}
+			if ( CeltFetched != NULL ) (*CeltFetched)++;
 		}
 		if ( EnumMode == -ENUMENTRY_INDEX ){
 			m_next_index++;
 			if ( m_next_index >= maxindex ) m_next_index = -1;
 		}else{ // -ENUMENTRY_WITHMARK / -ENUMENTRY_MARKONLY
-			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT_HS, &m_next_index) == 0 ){
+			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT_HS, &m_next_index) == PPXA_INVALID_FUNCTION ){
 				(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT, &m_next_index);
 			}
 		}
@@ -713,7 +738,7 @@ STDMETHODIMP CEntry::Reset()
 	return S_OK;
 }
 
-STDMETHODIMP CEntry::Clone(IEnumVARIANT FAR* FAR*)
+STDMETHODIMP CEntry::Clone(IEnumVARIANT **)
 {
 	Debug_WriteLog(CLASSNAMES "::Clone", NULL);
 	return E_NOTIMPL;
@@ -736,6 +761,7 @@ STDMETHODIMP CEntry::FirstMark(long *result)
 {
 	Debug_WriteLog(CLASSNAMES "::FirstMark", NULL);
 
+	*result = -1;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST_HS, result);
 	if ( *result == -1 ){
 		*result = 0;
@@ -780,6 +806,7 @@ STDMETHODIMP CEntry::LastMark(long *result)
 {
 	Debug_WriteLog(CLASSNAMES "::Prev", NULL);
 
+	*result = -1;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKLAST_HS, result);
 	if ( *result == -1 ){
 		*result = 0;
@@ -796,7 +823,9 @@ bool CEntry::IsEntryVailed(int newindex)
 	WCHAR bufW[CMDLINESIZE];
 
 	state = newindex;
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYSTATE, &state);
+	if ( PPXA_NO_ERROR != (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYSTATE, &state) ){
+		return false;
+	}
 	if ( (state & 7) < 2 ) return false; // < ECS_NORMAL
 
 	*(DWORD *)bufW = newindex;
@@ -811,7 +840,7 @@ bool CEntry::IsEntryVailed(int newindex)
 
 bool CEntry::CheckNextEntryAt(int newindex)
 {
-	int maxindex;
+	int maxindex = 0;
 
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_DIRTTOTAL, &maxindex);
 	for(;;){
@@ -824,13 +853,13 @@ bool CEntry::CheckNextEntryAt(int newindex)
 	}
 }
 
-STDMETHODIMP CEntry::moveNext( long * Value )
+STDMETHODIMP CEntry::moveNext(long * Value)
 {
 	*Value = m_index;
 	return S_OK;
 }
 
-STDMETHODIMP CEntry::atEnd(long * value )
+STDMETHODIMP CEntry::atEnd(long *value)
 {
 	int result;
 
@@ -840,7 +869,7 @@ STDMETHODIMP CEntry::atEnd(long * value )
 			*value = CheckNextEntryAt(0);
 			return S_OK;
 		}
-
+		result = -1; // 値が更新されなかったときは、PPXCMDID_CSRINDEX を使う
 		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKFIRST_HS, &result);
 		if ( result == -1 ){
 			if ( EnumMode == -ENUMENTRY_WITHMARK ){
@@ -866,7 +895,9 @@ STDMETHODIMP CEntry::atEnd(long * value )
 	}
 	for (;;){
 		result = m_index;
-		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT_HS, &result);
+		if ( PPXA_NO_ERROR != (*m_ppxa)->Function(*m_ppxa, PPXCMDID_ENTRYMARKNEXT_HS, &result) ){
+			return S_FALSE;
+		}
 		if ( result == -1 ){
 			*value = 1;
 			return S_OK;
@@ -878,18 +909,21 @@ STDMETHODIMP CEntry::atEnd(long * value )
 		}
 	}
 }
-STDMETHODIMP CEntry::get_Current(IEntry ** Value )
+
+STDMETHODIMP CEntry::get_Current(IEntry **Value)
 {
 	return Item(-1, Value);
 }
-STDMETHODIMP CEntry::get_AllMark(IEntry ** Value )
+
+STDMETHODIMP CEntry::get_AllMark(IEntry **Value)
 {
 	HRESULT result = Item(-1, Value);
 	if ( FAILED(result) ) return result;
 	static_cast<CEntry *>(*Value)->EnumMode = ENUMENTRY_MARKONLY;
 	return result;
 }
-STDMETHODIMP CEntry::get_AllEntry(IEntry ** Value )
+
+STDMETHODIMP CEntry::get_AllEntry(IEntry **Value)
 {
 	HRESULT result = Item(-1, Value);
 	if ( FAILED(result) ) return result;

@@ -1,7 +1,7 @@
-Paper Plane xUI  WSH Script Module
+# Paper Plane xUI  WSH Script Module
 
-���� PPXSCR.DLL �́AWSH(Windows Scripting Host) �̂悤��
-ActiveX Scripting Host �𗘗p���� PPx ��ŃX�N���v�g�����s����
-PPx Module �ł��B
+この PPXSCR.DLL は、WSH(Windows Scripting Host) のように
+ActiveX Scripting Host を利用して PPx 上でスクリプトを実行する
+PPx Module です。
 
-�ڍׂ́APPXSCR.TXT ���Q�Ƃ��Ă��������B
+詳細は、PPXSCR.TXT を参照してください。

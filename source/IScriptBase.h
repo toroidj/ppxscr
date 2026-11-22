@@ -182,7 +182,10 @@ private:
 	BSTR m_ScriptLongResult;
 	InstanceValueStruct *m_InstanceValue;
 	ERRORCODE m_extract_result;
-	void SinkDispatch(IDispatch *pDisp, BSTR prefix);
 	FREECHAIN m_EventChain;
+
+	HRESULT SinkDispatch(IDispatch *pDisp, BSTR prefix, BOOL connect);
+	void FreeEventChainObject(FREECHAIN *firstchain);
+	HRESULT CatVariantStrings(WCHAR **strptr, size_t *strtail, size_t *strbuflen, VARIANT *arg);
 };
 #endif

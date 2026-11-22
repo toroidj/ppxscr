@@ -83,7 +83,6 @@ try {
 
 try {
 	// ※V8版は日時を取得できない
-	// ※QuickJS 32bit版でnew Dateを使うと異常終了する
 	var enumlist = '';
 	for (var v = PPx.Enumerator(files); !v.atEnd(); v.moveNext() ){
 		var item;

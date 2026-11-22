@@ -15,15 +15,12 @@
 CPane::CPane(InstanceValueStruct *InstanceValue)
 {
 	T_IUNKNOWN_INITDEFINE();
-	m_typeInfo = NULL;
+	m_typeInfo = InstanceValue->PaneTypeInfo;
+	m_typeInfo->AddRef();
 	m_PaneIndex = -1; // ŽÀsŒ³‚Ì‘‹
 	m_EnumIndex = 0;
 	m_InstanceValue = InstanceValue;
 	m_ppxa = &(InstanceValue->ppxa);
-
-	if ( FAILED(::LoadTypeInfo(&m_typeInfo, CLSID_IPane_Class, 0)) ){
-		::PopupMessage(InstanceValue->ppxa, UNICODESTR(CLASSNAMES) UNICODESTR(" load error"));
-	}
 }
 
 //----------------------------------------------------- IUnknown
@@ -50,27 +47,31 @@ STDMETHODIMP CPane::QueryInterface(REFIID iid, void **ppv)
 STDMETHODIMP CPane::GetTypeInfoCount(UINT *iTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfoCount", NULL);
-	if ( (DWORD_PTR)iTInfo < 0x10000 ) return E_NOTIMPL;
+	if ( iTInfo == NULL ) return E_NOTIMPL;
 	*iTInfo = 1;
 	return S_OK;
 }
 
-STDMETHODIMP CPane::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
+STDMETHODIMP CPane::GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfo", NULL);
-	m_typeInfo->AddRef();
+	if ( iTInfo != 0 ){
+		*ppTInfo = NULL;
+		return DISP_E_BADINDEX;
+	}
 	*ppTInfo = m_typeInfo;
+	m_typeInfo->AddRef();
 	return S_OK;
 }
 
 STDMETHODIMP CPane::GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID, DISPID *rgDispId)
 {
 	Debug_WriteLog(CLASSNAMES "::GetIDsOfNames:", *rgszNames);
-	if ( riid != IID_NULL ) return E_INVALIDARG;
+	if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
 	return DispGetIDsOfNames(m_typeInfo, rgszNames, cNames, rgDispId);
 }
 
-STDMETHODIMP CPane::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO * ei/*pExcepInfo*/, unsigned int *puArgErr)
+STDMETHODIMP CPane::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO * ei, unsigned int *puArgErr)
 {
 	int arg;
 	HRESULT hr;
@@ -125,14 +126,13 @@ STDMETHODIMP CPane::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlag
 			{
 				int index;
 
-				pVarResult->vt = VT_UNKNOWN;
 				if ( pDispParams->cArgs == 0 ){
 					index = m_PaneIndex;
 				} else{
 					FixArgType(0, VT_I4);
 					index = pDispParams->rgvarg[0].lVal;
 				}
-				return Item(index, reinterpret_cast<IPane **>(&pVarResult->punkVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, Item(index, reinterpret_cast<IPane **>(&pVarResult->punkVal)));
 			}
 			case DISPID_NEWENUM:
 				pVarResult->vt = VT_UNKNOWN;
@@ -152,21 +152,32 @@ STDMETHODIMP CPane::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlag
 
 			case 7:
 				if ( pDispParams->cArgs > 1 ) return DISP_E_BADPARAMCOUNT;
-
-				pVarResult->vt = VT_DISPATCH;
-				hr = get_Tab(reinterpret_cast<ITab**>(&pVarResult->pdispVal));
-				if ( FAILED(hr) ) return hr;
-
 				if ( pDispParams->cArgs == 1 ){
 					FixArgType(0, VT_I4);
-					return (reinterpret_cast<ITab*>(pVarResult->pdispVal))->set_index(pDispParams->rgvarg[0].lVal);
-				} else{ // 0
-					return S_OK;
 				}
 
+				hr = get_Tab(reinterpret_cast<ITab**>(&pVarResult->pdispVal));
+				if ( FAILED(hr) ){
+					pVarResult->vt = VT_EMPTY;
+					return hr;
+				}
+
+				if ( pDispParams->cArgs == 1 ){ // str = PPx.Tabs(n)
+					hr = reinterpret_cast<ITab*>(pVarResult->pdispVal)->set_index(pDispParams->rgvarg[0].lVal);
+					if ( SUCCEEDED(hr) ){
+						pVarResult->vt = VT_DISPATCH;
+					}else{
+						reinterpret_cast<ITab*>(pVarResult->pdispVal)->Release();
+						pVarResult->pdispVal = NULL;
+						pVarResult->vt = VT_EMPTY;
+					}
+				} else{ // arg = PPx.Tabs()
+					pVarResult->vt = VT_DISPATCH;
+				}
+				return hr;
+
 			case 10:
-				pVarResult->vt = VT_DISPATCH;
-				return get_Current(reinterpret_cast<IPane**>(&pVarResult->pdispVal));
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, get_Current(reinterpret_cast<IPane**>(&pVarResult->pdispVal)));
 
 			case 11:
 				pVarResult->vt = VT_I4;
@@ -230,11 +241,11 @@ STDMETHODIMP CPane::get_Count(long *plCount)
 
 STDMETHODIMP CPane::Item(long nIndex, IPane **pValue)
 {
-	int max;
+	int maxpanes = 0;
 
 	Debug_WriteLog(CLASSNAMES "::Item", NULL);
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOSHOWPANES, &max);
-	if ( (nIndex < -3) || (nIndex >= max) ) return 0x800A0009;
+	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOSHOWPANES, &maxpanes);
+	if ( (nIndex < -3) || (nIndex >= maxpanes) ) return VB_E_OUTOFRANGE;
 
 	*pValue = new CPane(m_InstanceValue);
 	if ( *pValue == NULL ) return E_OUTOFMEMORY;
@@ -246,14 +257,12 @@ STDMETHODIMP CPane::Item(long nIndex, IPane **pValue)
 //----------------------------------------------------- IPane custom
 STDMETHODIMP CPane::get_length(long *pcArgs)
 {
-	*pcArgs = 0;
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOSHOWPANES, pcArgs);
-	return S_OK;
+	return get_Count(pcArgs);
 }
 
 STDMETHODIMP CPane::IndexFrom(BSTR name, LONG *moved)
 {
-	m_PaneIndex = static_cast<int>((*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOGETPANE, name));
+	m_PaneIndex = static_cast<int>((*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOGETPANE, ((name != NULL) ? name : L"")));
 	if ( moved != NULL ) *moved = (m_PaneIndex >= 0);
 	return S_OK;
 }
@@ -270,7 +279,7 @@ long CPane::GetPaneIndex(void)
 		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOSHOWINDEX, &tmp);
 		return tmp[0];
 	}
-	}
+}
 
 STDMETHODIMP CPane::get_index(long *Value/*[out, retval]*/)
 {
@@ -284,8 +293,15 @@ STDMETHODIMP CPane::set_index(long Value/*[in]*/)
 	return S_OK;
 }
 
-STDMETHODIMP CPane::get_Tab(ITab ** Value)
+STDMETHODIMP CPane::get_Tab(ITab **Value)
 {
+	if ( m_InstanceValue->TabTypeInfo == NULL ){
+		HRESULT hr;
+
+		if ( FAILED(hr = ::LoadSelfTypeInfo(&m_InstanceValue->TabTypeInfo, CLSID_ITab_Class)) ){
+			return hr;
+		}
+	}
 	*Value = new CTab(m_InstanceValue, m_PaneIndex);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;
 	(*Value)->AddRef();
@@ -294,27 +310,40 @@ STDMETHODIMP CPane::get_Tab(ITab ** Value)
 
 STDMETHODIMP CPane::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched)
 {
-	DWORD maxpane = 0;
+	int maxpane = 0;
+	ULONG celtindex, celtleft;
 
 	Debug_WriteLog(CLASSNAMES "::Next", NULL);
 	if ( CeltFetched != NULL ) *CeltFetched = 0;
 	if ( celt == 0 ) return S_OK;
-	if ( (rgvar == NULL) || ((celt != 1) && (CeltFetched == NULL)) ){
-		return E_INVALIDARG;
+
+	if ( rgvar != NULL ){
+		for ( celtindex = 0; celtindex < celt; celtindex++){
+			VariantInit(&rgvar[celtindex]);
+		}
 	}
 
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOSHOWPANES, &maxpane);
-	if ( (m_PaneIndex + celt) >= maxpane ) return S_FALSE;
 
-	while ( celt-- ){
+	celtleft = celt;
+	while ( celtleft-- ){
+		if ( (m_PaneIndex + 1) >= maxpane ) return S_FALSE;
 		m_PaneIndex++;
 		if ( rgvar != NULL ){
+			IPane *vpane;
+
 			rgvar->vt = VT_DISPATCH;
-			rgvar->pdispVal = this;
-			AddRef();
+			rgvar->pdispVal = vpane = new CPane(m_InstanceValue);
+			if ( vpane == NULL ){
+				for ( ; celtleft < celt; celtleft++) VariantClear(rgvar--);
+				if ( CeltFetched != NULL ) *CeltFetched = 0;
+				return E_OUTOFMEMORY;
+			}
+			vpane->AddRef();
+			vpane->set_index(m_PaneIndex);
 			rgvar++;
-			if ( CeltFetched != NULL ) (*CeltFetched)++;
 		}
+		if ( CeltFetched != NULL ) (*CeltFetched)++;
 	}
 	return S_OK;
 }
@@ -333,14 +362,14 @@ STDMETHODIMP CPane::Reset()
 	return S_OK;
 }
 
-STDMETHODIMP CPane::moveNext( long * Value )
+STDMETHODIMP CPane::moveNext(long *Value)
 {
 	m_EnumIndex++;
 	*Value = m_EnumIndex;
 	return S_OK;
 }
 
-STDMETHODIMP CPane::atEnd(long * value )
+STDMETHODIMP CPane::atEnd(long *value)
 {
 	int maxpanes = 0;
 
@@ -354,7 +383,7 @@ STDMETHODIMP CPane::atEnd(long * value )
 	return S_OK;
 }
 
-STDMETHODIMP CPane::get_Current(IPane ** Value )
+STDMETHODIMP CPane::get_Current(IPane **Value)
 {
 	*Value = new CPane(m_InstanceValue);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;
@@ -363,7 +392,7 @@ STDMETHODIMP CPane::get_Current(IPane ** Value )
 	return S_OK;
 }
 
-STDMETHODIMP CPane::get_GroupIndex(long* Value/*[out,retval]*/)
+STDMETHODIMP CPane::get_GroupIndex(long *Value/*[out,retval]*/)
 {
 	int tmp[2];
 
@@ -384,7 +413,7 @@ STDMETHODIMP CPane::set_GroupIndex(long Value/*[in]*/)
 	return S_OK;
 }
 
-STDMETHODIMP CPane::get_GroupCount(long* Value/*[out,retval]*/)
+STDMETHODIMP CPane::get_GroupCount(long *Value/*[out,retval]*/)
 {
 	int tmp[2];
 
@@ -395,45 +424,55 @@ STDMETHODIMP CPane::get_GroupCount(long* Value/*[out,retval]*/)
 	return S_OK;
 }
 
-STDMETHODIMP CPane::get_GroupList(BSTR* list/*[out,retval]*/)
+STDMETHODIMP CPane::get_GroupList(BSTR *list/*[out,retval]*/)
 {
 	int tmpc[2];
 	int PaneIndex;
-	PPXUPTR_TABINDEXSTRW tmp;
-	WCHAR *listbuf, *listptr;
 	LONG index = 0, maxindex;
 
 	PaneIndex = GetPaneIndex();
 	tmpc[0] = PaneIndex;
 	tmpc[1] = 0;
 	if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOGROUPCOUNT, &tmpc) != PPXA_NO_ERROR ){
+		*list = NULL;
 		return E_NOTIMPL;
 	}
 	maxindex = tmpc[1];
 
-	listbuf = listptr = new WCHAR[maxindex * CMDLINESIZE];
+	if ( maxindex <= 0 ){
+		*list = ::SysAllocString(::NilStrW);
+	}else{
+		WCHAR *listbuf, *listptr;
+		PPXUPTR_TABINDEXSTRW tmp;
 
-	for (; index < maxindex; index++){
-		tmp.pane = PaneIndex;
-		tmp.tab = index;
-		if ( index == 0 ){
-			tmp.str = listptr;
-		}else{
-			tmp.str = listptr + 1;
-			*listptr = '\t';
+		listbuf = listptr = new WCHAR[maxindex * CMDLINESIZE];
+		if ( listbuf == NULL ){
+			*list = NULL;
+			return E_OUTOFMEMORY;
 		}
-		if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOGROUPNAME, &tmp) !=  PPXA_NO_ERROR ){
-			*listptr = '\0';
-			break;
+
+		for (; index < maxindex; index++){
+			tmp.pane = PaneIndex;
+			tmp.tab = index;
+			if ( index == 0 ){
+				tmp.str = listptr;
+			}else{
+				tmp.str = listptr + 1;
+				*listptr = '\t';
+			}
+			if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOGROUPNAME, &tmp) !=  PPXA_NO_ERROR ){
+				*listptr = '\0';
+				break;
+			}
+			listptr += wcslen(listptr);
 		}
-		listptr += wcslen(listptr);
+		*list = ::SysAllocString(listbuf);
+		delete[] listbuf;
 	}
-	*list = ::SysAllocString(listbuf);
-	delete[] listbuf;
 	return S_OK;
 }
 
-STDMETHODIMP CPane::get_GroupName(BSTR* Value/*[out,retval]*/)
+STDMETHODIMP CPane::get_GroupName(BSTR *Value/*[out,retval]*/)
 {
 	PPXUPTR_TABINDEXSTRW tmp;
 	WCHAR param[CMDLINESIZE];
@@ -453,7 +492,7 @@ STDMETHODIMP CPane::set_GroupName(BSTR Value/*[in]*/)
 
 	tmp.pane = GetPaneIndex();
 	tmp.tab = -1;
-	tmp.str = Value;
+	tmp.str = (Value != NULL) ? Value : L"";
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_SETCOMBOGROUPNAME, &tmp);
 	return S_OK;
 }

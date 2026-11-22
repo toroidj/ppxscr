@@ -1,7 +1,7 @@
 @echo off
 set RETAIL=1
 rem *** set value ***
-set arcname=ppxscr22.zip
+set arcname=ppxscr24.zip
 set readme=PPXSCR.TXT
 set srcname=ppxscrsr.7z
 set exename=PPXSCR
@@ -14,6 +14,7 @@ del /q *.obj 2> NUL
 del /q *.res 2> NUL
 rem C++ Builder �ō쐬
 call mbc6 -DRELEASE
+rem VC �ō쐬
 call m64 -DRELEASE
 call marm64 -DRELEASE
 
@@ -35,6 +36,7 @@ for /R %%i in (*.sln) do CT %readme% %%i
 for /R %%i in (*.vc*) do CT %readme% %%i
 for %%i in (sample*.*) do CT %readme% %%i
 ppb /c %%u/7-ZIP32.DLL,a -tzip -hide -mx=7 %arcname% %readme% PPXSCR*.dll sample*.* %srcname%
+ppb /c %%u/7-ZIP32.DLL,a -tzip -hide -mx=7 %arcname:~0,-4%map.zip *.map
 tfilesign s %arcname% %arcname%
 CT %readme% %arcname%
 del /q %srcname% 2> NUL

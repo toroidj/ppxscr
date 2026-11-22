@@ -14,16 +14,13 @@
 CTab::CTab(InstanceValueStruct *InstanceValue, int paneindex)
 {
 	T_IUNKNOWN_INITDEFINE();
-	m_typeInfo = NULL;
+	m_typeInfo = InstanceValue->TabTypeInfo;
+	m_typeInfo->AddRef();
 	m_PaneIndex = paneindex;
 	m_TabIndex = -1;
 	m_EnumIndex = 0;
 	m_InstanceValue = InstanceValue;
 	m_ppxa = &(InstanceValue->ppxa);
-
-	if ( FAILED(::LoadTypeInfo(&m_typeInfo, CLSID_ITab_Class, 0)) ){
-		::PopupMessage(InstanceValue->ppxa, UNICODESTR(CLASSNAMES) UNICODESTR(" load error"));
-	}
 }
 
 //----------------------------------------------------- IUnknown
@@ -50,27 +47,31 @@ STDMETHODIMP CTab::QueryInterface(REFIID iid, void **ppv)
 STDMETHODIMP CTab::GetTypeInfoCount(UINT *iTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfoCount", NULL);
-	if ( (DWORD_PTR)iTInfo < 0x10000 ) return E_NOTIMPL;
+	if ( iTInfo == NULL ) return E_NOTIMPL;
 	*iTInfo = 1;
 	return S_OK;
 }
 
-STDMETHODIMP CTab::GetTypeInfo(UINT, LCID, ITypeInfo **ppTInfo)
+STDMETHODIMP CTab::GetTypeInfo(UINT iTInfo, LCID, ITypeInfo **ppTInfo)
 {
 	Debug_WriteLog(CLASSNAMES "::GetTypeInfo", NULL);
-	m_typeInfo->AddRef();
+	if ( iTInfo != 0 ){
+		*ppTInfo = NULL;
+		return DISP_E_BADINDEX;
+	}
 	*ppTInfo = m_typeInfo;
+	m_typeInfo->AddRef();
 	return S_OK;
 }
 
 STDMETHODIMP CTab::GetIDsOfNames(REFIID riid, OLECHAR **rgszNames, UINT cNames, LCID, DISPID *rgDispId)
 {
 	Debug_WriteLog(CLASSNAMES "::GetIDsOfNames:", *rgszNames);
-	if ( riid != IID_NULL ) return E_INVALIDARG;
+	if ( riid != IID_NULL ) return DISP_E_UNKNOWNINTERFACE;
 	return DispGetIDsOfNames(m_typeInfo, rgszNames, cNames, rgDispId);
 }
 
-STDMETHODIMP CTab::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO * ei, unsigned int *puArgErr)
+STDMETHODIMP CTab::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO *ei, unsigned int *puArgErr)
 {
 	int arg;
 	HRESULT hr;
@@ -127,16 +128,13 @@ STDMETHODIMP CTab::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags
 			{
 				int index;
 
-				pVarResult->vt = VT_UNKNOWN;
 				if ( pDispParams->cArgs == 0 ){
 					index = m_TabIndex;
 				} else{
 					FixArgType(0, VT_I4);
 					index = pDispParams->rgvarg[0].lVal;
 				}
-				hr = Item(index, reinterpret_cast<ITab **>(&pVarResult->punkVal));
-				if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				return hr;
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, Item(index, reinterpret_cast<ITab **>(&pVarResult->punkVal)));
 			}
 
 			case DISPID_NEWENUM:
@@ -200,10 +198,7 @@ STDMETHODIMP CTab::Invoke(DISPID dispIdMember, REFIID riid, LCID lc, WORD wFlags
 				return Extract(pDispParams->rgvarg[0].bstrVal, &pVarResult->bstrVal);
 
 			case 19:
-				pVarResult->vt = VT_DISPATCH;
-				hr = get_Current(reinterpret_cast<ITab**>(&pVarResult->pdispVal));
-				if ( FAILED(hr) ) pVarResult->vt = VT_EMPTY;
-				return hr;
+				return SetVariantPtrResult(VT_DISPATCH, pVarResult, get_Current(reinterpret_cast<ITab**>(&pVarResult->pdispVal)));
 		}
 	}
 									// Put Properties(代入) -------------------
@@ -281,50 +276,60 @@ STDMETHODIMP CTab::Item(long nIndex, ITab **pValue)
 //----------------------------------------------------- ITab custom
 STDMETHODIMP CTab::get_length(long *pcArgs)
 {
-	*pcArgs = m_PaneIndex;
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABCOUNT, pcArgs);
-	return S_OK;
+	return get_Count(pcArgs);
 }
 
 STDMETHODIMP CTab::get_Name(BSTR *result)
 {
-	DWORD buf[CMDLINESIZE / sizeof(DWORD)];
+	union {
+		int index[2];
+		WCHAR name[CMDLINESIZE];
+	} buf;
 
-	buf[0] = m_PaneIndex;
-	buf[1] = m_TabIndex;
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABNAME, &buf);
-	*result = ::SysAllocString((WCHAR *)&buf);
+	buf.index[0] = m_PaneIndex;
+	buf.index[1] = m_TabIndex;
+	if ( PPXA_NO_ERROR != (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABNAME, &buf) ){
+		buf.name[0] = '\0'; // エラーなので空欄を返す
+	}
+	*result = ::SysAllocString(buf.name);
 	return S_OK;
 }
 
-STDMETHODIMP CTab::set_Name(wchar_t *result)
+STDMETHODIMP CTab::set_Name(wchar_t *result) // V2.12 時点では PPc 側が未実装
 {
-	DWORD buf[4];
+	PPXUPTR_TABINDEXSTRW buf;
 
-	buf[0] = m_PaneIndex;
-	buf[1] = m_TabIndex;
-	*(WCHAR **)&buf[2] = result;
-	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_SETTABNAME, &buf);
-	return S_OK;
+	buf.pane = m_PaneIndex;
+	buf.tab = m_TabIndex;
+	buf.str = (result != NULL) ? result : L"";
+	return (PPXA_NO_ERROR == (*m_ppxa)->Function(*m_ppxa, PPXCMDID_SETTABNAME, &buf)) ? S_OK : E_NOTIMPL;
 }
 
 STDMETHODIMP CTab::get_idname(BSTR *result)
 {
-	DWORD buf[REGEXTIDSIZE / 2];
+	union {
+		int index[2];
+		WCHAR idname[REGEXTIDSIZE];
+	} buf;
 
-	buf[0] = m_PaneIndex;
-	buf[1] = m_TabIndex;
+	buf.index[0] = m_PaneIndex;
+	buf.index[1] = m_TabIndex;
 	if ( m_InstanceValue->IDNameMode == 0 ){
-		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABIDNAME, &buf);
-	}else if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABLONGID, &buf) == 0 ){
-		buf[0] = m_PaneIndex;
-		buf[1] = m_TabIndex;
-		(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABIDNAME, &buf);
-		if ( ((WCHAR *)&buf)[1] == '_' ){
-			memmove(((WCHAR *)&buf) + 1, ((WCHAR *)&buf) + 2, (strlenW(((WCHAR *)&buf) + 2) + 1) * 2);
+		if ( PPXA_NO_ERROR != (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABIDNAME, &buf) ){
+			buf.idname[0] = '\0'; // エラーなので空欄を返す
+		}
+	}else if ( (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABLONGID, &buf) == PPXA_INVALID_FUNCTION ){
+		buf.index[0] = m_PaneIndex;
+		buf.index[1] = m_TabIndex;
+		if ( PPXA_NO_ERROR != (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABIDNAME, &buf) ){
+			buf.idname[0] = '\0'; // エラーなので空欄を返す
+		}else{
+			if ( buf.idname[1] == '_' ){
+				memmove(buf.idname + 1, buf.idname + 2, (strlenW(buf.idname + 2) + 1) * sizeof(WCHAR));
+			}
 		}
 	}
-	*result = ::SysAllocString((WCHAR *)&buf);
+	*result = ::SysAllocString(buf.idname);
 	return S_OK;
 }
 
@@ -481,28 +486,41 @@ STDMETHODIMP CTab::get_TotalPPcCount(long *)
 
 STDMETHODIMP CTab::Next(ULONG celt, VARIANT *rgvar, ULONG *CeltFetched)
 {
-	DWORD maxtabs = 0;
+	int maxtabs = 0;
+	ULONG celtindex, celtleft;
 
 	Debug_WriteLog(CLASSNAMES "::Next", NULL);
 	if ( CeltFetched != NULL ) *CeltFetched = 0;
 	if ( celt == 0 ) return S_OK;
-	if ( (rgvar == NULL) || ((celt != 1) && (CeltFetched == NULL)) ){
-		return E_INVALIDARG;
+
+	if ( rgvar != NULL ){
+		for ( celtindex = 0; celtindex < celt; celtindex++){
+			VariantInit(&rgvar[celtindex]);
+		}
 	}
 
 	maxtabs = m_PaneIndex;
 	(*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABCOUNT, &maxtabs);
-	if ( (m_TabIndex + celt) >= maxtabs ) return S_FALSE;
 
-	while ( celt-- ){
+	celtleft = celt;
+	while ( celtleft-- ){
+		if ( (m_TabIndex + 1) >= maxtabs ) return S_FALSE;
 		m_TabIndex++;
 		if ( rgvar != NULL ){
+			ITab *vtab;
+
 			rgvar->vt = VT_DISPATCH;
-			rgvar->pdispVal = this;
-			AddRef();
+			rgvar->pdispVal = vtab = new CTab(m_InstanceValue, m_PaneIndex);
+			if ( vtab == NULL ){
+				for ( ; celtleft < celt; celtleft++) VariantClear(rgvar--);
+				if ( CeltFetched != NULL ) *CeltFetched = 0;
+				return E_OUTOFMEMORY;
+			}
+			vtab->AddRef();
+			vtab->set_index(m_TabIndex);
 			rgvar++;
-			if ( CeltFetched != NULL ) (*CeltFetched)++;
 		}
+		if ( CeltFetched != NULL ) (*CeltFetched)++;
 	}
 	return S_OK;
 }
@@ -514,7 +532,7 @@ STDMETHODIMP CTab::IndexFrom(BSTR name, LONG *moved)
 
 	tmp.pane = m_PaneIndex;
 	tmp.tab = m_TabIndex;
-	tmp.str = name;
+	tmp.str = (name != NULL) ? name : L"";
 	result = (*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOGETTAB, &tmp);
 	m_PaneIndex = tmp.pane;
 	m_TabIndex = tmp.tab;
@@ -544,7 +562,7 @@ STDMETHODIMP CTab::Execute(BSTR param, long *result)
 	if ( param == NULL ) return S_OK;
 	tmp.pane = m_PaneIndex;
 	tmp.tab = m_TabIndex;
-	tmp.str = param;
+	tmp.str = (param != NULL) ? param : L"";
 	resultcode = static_cast<ERRORCODE>((*m_ppxa)->Function(*m_ppxa, PPXCMDID_COMBOTABEXECUTE, &tmp));
 	if ( result != NULL ){
 		if ( resultcode == 1 ) resultcode = NO_ERROR;
@@ -562,7 +580,7 @@ STDMETHODIMP CTab::Extract(BSTR param, BSTR *result)
 
 	if ( param == NULL ){
 //		tprintfW(bufwtmp, L"%d", m_extract_result);
-		*result = ::SysAllocString(L"");
+		*result = ::SysAllocString(::NilStrW);
 		return S_OK;
 	}
 
@@ -591,14 +609,14 @@ STDMETHODIMP CTab::Extract(BSTR param, BSTR *result)
 	return S_OK;
 }
 
-STDMETHODIMP CTab::moveNext( long * Value )
+STDMETHODIMP CTab::moveNext(long *Value)
 {
 	m_EnumIndex++;
 	*Value = m_EnumIndex;
 	return S_OK;
 }
 
-STDMETHODIMP CTab::atEnd(long * value )
+STDMETHODIMP CTab::atEnd(long *value)
 {
 	int maxtabs = 0;
 
@@ -613,7 +631,7 @@ STDMETHODIMP CTab::atEnd(long * value )
 	return S_OK;
 }
 
-STDMETHODIMP CTab::get_Current(ITab ** Value )
+STDMETHODIMP CTab::get_Current(ITab **Value)
 {
 	*Value = new CTab(m_InstanceValue, m_PaneIndex);
 	if ( *Value == NULL ) return E_OUTOFMEMORY;

@@ -10,27 +10,27 @@ if ( len == 0 ){
 	PPx.report("no parameter\r\n");
 }else{
 	// 列挙の例1 (パース前のパラメータを取得)
-	PPx.report("Sample 1: " + PPx.Argument(-1) + "\r\n");
+	PPx.report("Sample 1(raw 1): " + PPx.Argument(-1) + "\r\n");
 
 	// 列挙の例2 (パース前のパラメータを取得)
-	PPx.report("Sample 2: " + PPx.Arguments.Item(-1) + "\r\n");
+	PPx.report("Sample 2(raw 2): " + PPx.Arguments.Item(-1) + "\r\n");
 
 	// 列挙の例3 (WSH/V8/QuickJS兼用)PPx.Argument(i), (WSH限定)PPx.Arguments(i)
-	list = "Sample 3: ";
+	list = "Sample 3(for): ";
 	for ( var i = 0; i < len ; i++ ){
 		list = list + PPx.Argument(i) + ", ";
 	}
 	PPx.report(list + "\r\n");
 
 	// 列挙の例4 (WSH/V8/QuickJS兼用)v.value, (WSH限定)v.Item (V8限定)v.Item()
-	list = "Sample 4: ";
+	list = "Sample 4(for atEnd,moveNext): ";
 	for (var v = PPx.Arguments; !v.atEnd(); v.moveNext() ){
 		list = list + v.value + ", ";
 	}
 	PPx.report(list + "\r\n");
 
 	// 列挙の例5 (WSH/V8/QuickJS兼用)
-	list = "Sample 5: ";
+	list = "Sample 5(PPx.Enumerator): ";
 	for (var v = PPx.Enumerator(PPx.Arguments); !v.atEnd(); v.moveNext() ){
 		list = list + v.item() + ", ";
 	}
@@ -38,12 +38,12 @@ if ( len == 0 ){
 
 	// 列挙の例6 (V8/QuickJS 限定, Chakraでは結果が空欄)
 	try {
-		PPx.report("Sample 6: " + Array.from(PPx.Arguments).join(', ') + "\r\n");
+		PPx.report("Sample 6(Array.from): " + Array.from(PPx.Arguments).join(', ') + "\r\n");
 	}catch(e){
-		PPx.report("Sample 5: (JScript/9.DLL は使用不可)\r\n");
+		PPx.report("Sample 6(Array.from): (JScript/9.DLL は使用不可)\r\n");
 	}
 	// 列挙の例7 (V8/QuickJS 限定)
-	list = "Sample 7: ";
+	list = "Sample 7(for of): ";
 /*@cc_on @*/
 /*@if (@_jscript)
 	list += "(WSH では使用不可)";

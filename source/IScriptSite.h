@@ -33,13 +33,11 @@ public:
 // IActiveScriptSiteInterruptPoll
 	STDMETHODIMP QueryContinue(void);
 // Local define
-	ERRORCODE result;
-
 	int InitializeScriptSite(PPXMCOMMANDSTRUCT *pxc, const WCHAR *inline_type, int StayMode);
 	int RunScript();
 	void QuitScript();
 	HRESULT InvokeScript(const WCHAR *funcname, const WCHAR *param, int paramcount);
-	HRESULT CScriptSite::EvalScript(const WCHAR *script);
+	HRESULT EvalScript(const WCHAR *script);
 	InstanceValueStruct InstanceValue;
 
 private:

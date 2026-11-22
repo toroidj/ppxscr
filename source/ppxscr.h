@@ -1,17 +1,24 @@
 /*-----------------------------------------------------------------------------
 	Paper Plane xUI  Script Module
 -----------------------------------------------------------------------------*/
-// TOROWIN.H, PPCOMMON.H は PPx のソースから流用する
-#include "../../ppx/TOROWIN.H"
-#include "../../ppx/PPCOMMON.H"
-#define TOSTRMACRO(item)	#item
+#include "torowin.h"
+#include "ppcommon.h"
+#define TOSTRMACRO2(item)	#item
+#define TOSTRMACRO(item)	TOSTRMACRO2(item)
 
-#define SCRIPTMODULEVER		22  // Release number
-#define SCRIPTMODULEVERSTR	UNICODESTR(TOSTRMACRO(22))
+#define SCRIPTMODULEVER		24  // Release number
+#define SCRIPTMODULEVERSTR	UNICODESTR(TOSTRMACRO(SCRIPTMODULEVER))
 
 
 #define DWORDPP 4294967296.	// 0x1 0000 0000 (DWORD で扱えない最少数)
 #define __TLB_NO_INTERFACE_WRAPPERS
+
+#define MAXINVOKENAME 0x100
+
+#define VB_E_OUTOFRANGE 0x800A0009
+#ifndef SCRIPT_E_REPORTED
+	#define SCRIPT_E_REPORTED (SCODE)0x80020101
+#endif
 
 // BCC builder で余分な警告を出ないようにする定義。不都合有るなら除去が必要
 #define __INC_CRTDBG
@@ -19,7 +26,7 @@
 
 // Global Value
 extern OSVERSIONINFO OSver;
-extern const WCHAR NullStr[];
+extern const WCHAR NilStrW[];
 extern int UseJScript9; // JScript9.DLL を使用するか／Scriptのモード
 //extern HINSTANCE hDllInstance;	// 現在ppxscr.cpp内で完結
 //extern WCHAR DLLFileName[MAX_PATH];	// 現在ppxscr.cpp内で完結
@@ -47,6 +54,14 @@ typedef struct {
 	CScriptBase *Base;
 	ScriptArgs arg; // PPXMCOMMANDSTRUCT
 	WCHAR ScriptName[VFPS];
+
+	ITypeInfo *ArgumentsTypeInfo;
+	ITypeInfo *BaseTypeInfo;
+	ITypeInfo *EntryTypeInfo;
+	ITypeInfo *PaneTypeInfo;
+	ITypeInfo *PPxEnumTypeInfo;
+	ITypeInfo *TabTypeInfo;
+
 	// include 管理用
 	int SourceIDserver; // IncludeNames 内の位置を示す ID を払い出すカウンタ
 	WCHAR *IncludeNames; // include したソースの名前を記憶する \1 区切りの文字列
@@ -76,7 +91,7 @@ typedef struct {
 extern PPXAPPINFOW DummyPPxAppInfo;
 
 // Function
-extern STDMETHODIMP LoadTypeInfo(ITypeInfo** pptinfo, REFCLSID clsid, LCID lcid);
+extern STDMETHODIMP LoadSelfTypeInfo(ITypeInfo** pptinfo, REFCLSID clsid);
 extern BOOL GetRegStringW(HKEY hKey, const WCHAR *path, const WCHAR *name, WCHAR *dest, DWORD size);
 extern WCHAR *LoadScriptFile(const WCHAR *filename);
 extern void PopupMessage(PPXAPPINFOW *ppxa, const WCHAR *message);
@@ -85,10 +100,12 @@ extern void PopupMessagef(PPXAPPINFOW *ppxa, const WCHAR *format, ...);
 extern int ChainStayInstance(InstanceValueStruct *InstanceValue, int mode);
 extern void DropStayInstance(InstanceValueStruct *InstanceValue);
 
+extern WCHAR *stplimcpyW(WCHAR *deststr, const WCHAR *srcstr, size_t maxlength);
+
 #ifdef _WIN64
 #define tprintfW wsprintfW
 #define tvprintfW wvsprintfW
-#else // Win9x で使用できる WCHAR 版 wsprintf サブセット
+#else // Win9x で使用できる WCHAR 版 wsprintf サブセット。%s %d %u %x のみ対応
 extern void tprintfW(WCHAR *message, const WCHAR *format, ...);
 extern void tvprintfW(WCHAR *dest, const WCHAR *format, va_list argptr);
 #endif
@@ -148,6 +165,17 @@ STDMETHODIMP classname::QueryInterface(REFIID riid, void **ppvObj)\
 #define ArgsCheck(n) if ( pDispParams->cArgs != n ){\
 		return DISP_E_BADPARAMCOUNT;\
 	}
+
+template <typename T> T SetVariantPtrResult(VARTYPE vt, VARIANT *pVarResult, T hr)
+{
+	if ( SUCCEEDED(hr) && (pVarResult->punkVal != NULL) ){
+		pVarResult->vt = vt;
+	}else{
+		pVarResult->vt = VT_EMPTY;
+		pVarResult->punkVal = NULL;
+	}
+	return hr;
+}
 
 // Debug 用
 #ifndef DEBUG
